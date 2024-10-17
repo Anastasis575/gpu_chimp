@@ -20,7 +20,7 @@ log = "0.4.22"
 tokio = {version=  "1.40.0",features=["full"]}
 rand = "0.8.5"
 env_logger = "0.11.5"
-bytemuck = "1.18.0"
+bytemuck = { version = "1.18.0" , features = ["derive"]}
 flume = "0.11.0"
 pollster = "0.3.0"
 wgpu = { version="22.1.0", default-features = false, features = [
@@ -28,3 +28,5 @@ wgpu = { version="22.1.0", default-features = false, features = [
    "dx12",
    "metal",
 ] }
+bit-vec = "0.8.0"
+async-trait = "0.1.83"

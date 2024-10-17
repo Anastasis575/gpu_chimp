@@ -2,11 +2,8 @@
 struct S{
     leading:i32,
     trailing:i32,
-    equal:bool
-}
-struct Output{
-    compressed:f32,
-    size:u32
+    equal:u32,
+    pr_lead:u32,
 }
 
 
@@ -21,17 +18,18 @@ var<storage, read_write> in: array<f32>; // this is used as both input and outpu
 
 
 fn calculate_s(v_prev:f32,v:f32) -> S{
-   var i:f32= v_prev^v;
-   var i_u:u32=bitcast<u32>(i);
-   var leading=countLeadingZeros(i_u);
-   var trailing=countTrailingZeros(i_u);
-   var equal=i=0
-   return s(leading,trailing,equal);
+   var v_prev_u32=bitcast<u32>(v_prev);
+   var v_u32=bitcast<u32>(v);
+   var i= v_prev_u32^v_u32;
+   var leading=i32(countLeadingZeros(i));
+   var trailing=i32(countTrailingZeros(i));
+   var equal=u32(i==0);
+   return S(leading,trailing,equal,0);
 }
 
 @compute
-@workgroup_size(32)
+@workgroup_size(64)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    var index_prev=max(global_id.x,0)
+    var index_prev=max(global_id.x - 1,u32(0));
     s_store[global_id.x] = calculate_s(in[global_id.x],in[index_prev]);
 }
