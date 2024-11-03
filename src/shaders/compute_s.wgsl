@@ -28,8 +28,7 @@ fn calculate_s(v_prev:f32,v:f32) -> S{
 }
 
 @compute
-@workgroup_size(64)
+@workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    var index_prev=max(global_id.x - 1,u32(0));
-    s_store[global_id.x] = calculate_s(in[global_id.x],in[index_prev]);
+    s_store[global_id.x+1] = calculate_s(in[global_id.x],in[global_id.x+1]);
 }
