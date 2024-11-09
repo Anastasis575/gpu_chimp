@@ -1,3 +1,7 @@
+pub mod context;
+pub mod cpu_compress;
+pub mod types;
+
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferAddress, BufferUsages, Device};
 
@@ -68,9 +72,9 @@ impl BufferWrapper {
 }
 
 /// WGPU utility functions
-pub(crate) mod wgpu_utils {
-    use crate::utils::BufferWrapper;
-    use crate::Context;
+pub mod wgpu_utils {
+    use crate::context::Context;
+    use crate::BufferWrapper;
     use anyhow::Result;
     use bytemuck::Pod;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
@@ -246,10 +250,9 @@ pub mod bit_utils {
 /// General Utility Functions
 pub mod general_utils {
     use log::warn;
-    use std::env::VarError;
+
     use std::fs;
     use std::fs::OpenOptions;
-    use std::num::ParseIntError;
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
         Ok(fs::exists("anastasis.debug")?)

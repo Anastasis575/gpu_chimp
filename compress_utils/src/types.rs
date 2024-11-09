@@ -1,4 +1,4 @@
-use crate::utils::bit_utils::to_bit_vec;
+use crate::bit_utils::to_bit_vec;
 use std::fmt;
 use std::fmt::Formatter;
 

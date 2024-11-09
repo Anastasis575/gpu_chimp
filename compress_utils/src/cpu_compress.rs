@@ -1,4 +1,4 @@
-use crate::utils::bit_utils::{to_bit_vec, BitReadable, BitWritable};
+use crate::bit_utils::{to_bit_vec, BitReadable, BitWritable};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 

@@ -2,6 +2,8 @@
 
 ## Description
 
+A GPU implementation of the
+
 ## Getting Started
 
 ## Running

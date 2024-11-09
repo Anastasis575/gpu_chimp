@@ -1,13 +1,11 @@
 use anyhow::Result;
-use compress::cpu_compress::{
+use compress_utils::bit_utils::to_bit_vec;
+use compress_utils::cpu_compress::{
     CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
 };
-use compress::utils::bit_utils::to_bit_vec;
-use compress::utils::general_utils::{check_for_debug_mode, open_file_for_append};
+use compress_utils::general_utils::check_for_debug_mode;
 use itertools::Itertools;
 use log::info;
-use std::cmp::min;
-use std::io::Write;
 use std::{env, fs};
 
 #[tokio::main]
@@ -24,7 +22,7 @@ pub async fn main() -> Result<()> {
     //Scenario for gpu_compress
     gpu_compress(&mut values).await?;
 
-    //Scenario for cpu_compress.await?;
+    //Scenario for cpu compression
     // cpu_compress(&mut values).await?;
     Ok(())
 }
@@ -50,7 +48,7 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
 
 async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Starting compression of {} values", values.len());
-    let mut compressor = compress::ChimpCompressor::default();
+    let mut compressor = wgpu_compress_32::ChimpCompressor::default();
     if check_for_debug_mode().expect("Could not read file system") {
         compressor.set_debug(true);
     }
@@ -67,7 +65,7 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
 
 fn get_values() -> Result<Vec<f32>> {
     let dir = env::current_dir()?;
-    let file_path = dir.join("city_temperature.csv");
+    let file_path = dir.parent().unwrap().join("city_temperature.csv");
     let file_txt = fs::read_to_string(file_path)?;
     let values = file_txt
         .split("\n")
@@ -90,16 +88,19 @@ fn get_third(field: &str) -> Option<String> {
 #[cfg(test)]
 mod compress_test {
     use crate::get_values;
-    use compress::cpu_compress::{CPUCompressor, Compressor, Decompressor, TimedDecompressor};
-    use compress::utils::general_utils::check_for_debug_mode;
+    use bit_vec::BitVec;
+    use compress_utils::cpu_compress::{
+        CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
+    };
+    use compress_utils::general_utils::check_for_debug_mode;
 
     #[test]
-    pub fn test_wgpu() {
+    pub fn wgpu_compress_32() {
         env_logger::init();
 
         let mut values = get_values().expect("Could not read test values");
         log::info!("Starting compression of {} values", values.len());
-        let mut compressor = compress::ChimpCompressor::default();
+        let mut compressor = wgpu_compress_32::ChimpCompressor::default();
         if check_for_debug_mode().expect("Could not read file system") {
             compressor.set_debug(true);
         }
@@ -107,7 +108,7 @@ mod compress_test {
 
         let mut compressed = pollster::block_on(compressor.compress(&mut values)).unwrap();
         log::info!("Finished compression of {} values", values.len());
-
+        let total_compressed_bytes = compressed.len() * size_of::<u8>();
         log::info!("Started decompression");
         let decompressed = pollster::block_on(cpu_model.decompress(&mut compressed)).unwrap();
         log::info!("Finished decompression");
@@ -130,6 +131,14 @@ mod compress_test {
             "The number of values that are almost equal to the initial dataset is {}({})",
             count_almost_equal,
             100 * count_almost_equal / values.len()
+        );
+        log::info!(
+            "The total size of the compressed dataset is {}",
+            values.len() * size_of::<f32>(),
+        );
+        log::info!(
+            "The mean bit count per number is {}%",
+            100 * compressed.len() / (values.len() * size_of::<f32>()),
         );
 
         assert_eq!(count_equal, values.len());

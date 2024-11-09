@@ -1,0 +1,19 @@
+[package]
+name = "compress_utils"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "compress_utils"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+bytemuck = { version = "1.19.0", features = ["derive"] }
+flume = "0.11.1"
+bit-vec = { workspace = true }
+wgpu = { workspace = true }
+wgpu-types = { workspace = true }
+async-trait = { workspace = true }
