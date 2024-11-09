@@ -4,15 +4,17 @@ pub mod utils;
 use crate::cpu_compress::Compressor;
 use crate::types::{ChimpOutput, S};
 use crate::utils::bit_utils::to_bit_vec;
-use crate::utils::general_utils::open_file_for_append;
+use crate::utils::general_utils::{get_buffer_size, open_file_for_append};
 use anyhow::{anyhow, Ok, Result};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use itertools::Itertools;
+use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::io::{BufWriter, Write};
 use std::ops::Div;
+use tracing_subscriber::fmt::format;
 use wgpu::{Adapter, BufferAddress, Device, Queue};
 pub mod types;
 
@@ -88,7 +90,10 @@ impl ChimpCompressor {
 
     pub async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
         // Create shader module and pipeline
-        let temp = include_str!("shaders/compute_s.wgsl").to_string();
+        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
+        let temp = include_str!("shaders/compute_s.wgsl")
+            .replace("#@workgroup_size(1)#", &workgroup_size)
+            .to_string();
         let compute_s_shader_module =
             utils::wgpu_utils::create_shader_module(self.device(), &temp)?;
 
@@ -96,13 +101,13 @@ impl ChimpCompressor {
 
         let size_of_s = size_of::<S>();
         let bytes = values.len() + 1;
-        log::info!("The size of the input values vec: {}", bytes);
+        info!("The size of the input values vec: {}", bytes);
 
         let s_buffer_size = (size_of_s * bytes) as BufferAddress;
-        log::info!("The S buffer size in bytes: {}", s_buffer_size);
+        info!("The S buffer size in bytes: {}", s_buffer_size);
 
-        let workgroup_count = values.len().div(256);
-        log::info!("The wgpu workgroup size: {}", &workgroup_count);
+        let workgroup_count = values.len().div(get_buffer_size());
+        info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let mut padded_values = Vec::from(values);
         padded_values.push(0f32);
@@ -162,7 +167,15 @@ impl ChimpCompressor {
             s_staging_buffer.buffer(),
         )
         .await?;
-        log::info!("Output result size: {}", output.len());
+        // for (i, s) in output.iter().enumerate() {
+        //     println!("{}:{:?}", i, s);
+        // }
+        if self.debug {
+            for (i, o) in output.iter().enumerate() {
+                info!("{i}:{:?}", o);
+            }
+        }
+        info!("Output result size: {}", output.len());
         Ok(output)
     }
 
@@ -181,87 +194,87 @@ impl ChimpCompressor {
         self.context.queue()
     }
 
-    async fn improve_s(&self, s_values: &mut Vec<S>) -> Result<Vec<S>> {
-        // Create shader module and pipeline
-        let mut debug_msg = String::new();
-        let temp = include_str!("shaders/propagate_s.wgsl").to_string();
-        let compute_s_shader_module =
-            utils::wgpu_utils::create_shader_module(self.device(), &temp)?;
-
-        let size_of_s = size_of::<S>();
-        let bytes = s_values.len();
-        log::info!("The size of the input values vec: {}", bytes);
-
-        let s_buffer_size = (size_of_s * bytes) as BufferAddress;
-        log::info!("The S buffer size in bytes: {}", s_buffer_size);
-
-        let workgroup_count = s_values.len().div(256);
-        log::info!("The wgpu workgroup size: {}", &workgroup_count);
-
-        let s_staging_buffer = utils::BufferWrapper::stage_with_size(
-            self.device(),
-            s_buffer_size,
-            Some("Staging S Buffer"),
-        );
-        let s_storage_buffer = utils::BufferWrapper::storage_with_content(
-            self.device(),
-            bytemuck::cast_slice(s_values.as_slice()),
-            Some("Storage S Buffer"),
-        );
-
-        let binding_group_layout = utils::wgpu_utils::assign_bind_groups(
-            self.device(),
-            vec![&s_storage_buffer, &s_staging_buffer],
-        );
-        let improve_s_pipeline = utils::wgpu_utils::create_compute_shader_pipeline(
-            self.device(),
-            &compute_s_shader_module,
-            &binding_group_layout,
-            Some("Compute s pipeline"),
-        )?;
-        let binding_group = utils::wgpu_utils::create_bind_group(
-            self.context(),
-            &binding_group_layout,
-            vec![&s_storage_buffer, &s_staging_buffer],
-        );
-        let mut s_encoder = self
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-        {
-            let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("s_pass"),
-                timestamp_writes: None,
-            });
-            s_pass.set_pipeline(&improve_s_pipeline);
-            s_pass.set_bind_group(0, &binding_group, &[]);
-            s_pass.dispatch_workgroups(max(workgroup_count, 1) as u32, 1, 1)
-        }
-
-        self.queue().submit(Some(s_encoder.finish()));
-
-        let output = utils::wgpu_utils::get_s_output::<S>(
-            self.context(),
-            s_storage_buffer.buffer(),
-            s_buffer_size,
-            s_staging_buffer.buffer(),
-        )
-        .await?;
-        if self.debug {
-            let mut debug_file = open_file_for_append("improve_s.debug")?;
-            for (i, chimp) in output.iter().enumerate() {
-                debug_msg.push_str(&format!("{}:{:?}\n", i, chimp));
-                if i % 64 == 0 {
-                    writeln!(debug_file, "{}", debug_msg)?;
-                    debug_msg.clear();
-                }
-            }
-            write!(debug_file, "{}", debug_msg)?;
-        }
-
-        log::info!("Improved Output result size: {}", output.len());
-        Ok(output)
-    }
+    // async fn improve_s(&self, s_values: &mut Vec<S>) -> Result<Vec<S>> {
+    //     // Create shader module and pipeline
+    //     let mut debug_msg = String::new();
+    //     let temp = include_str!("shaders/propagate_s.wgsl").to_string();
+    //     let compute_s_shader_module =
+    //         utils::wgpu_utils::create_shader_module(self.device(), &temp)?;
+    //
+    //     let size_of_s = size_of::<S>();
+    //     let bytes = s_values.len();
+    //     info!("The size of the input values vec: {}", bytes);
+    //
+    //     let s_buffer_size = (size_of_s * bytes) as BufferAddress;
+    //     info!("The S buffer size in bytes: {}", s_buffer_size);
+    //
+    //     let workgroup_count = s_values.len().div(256);
+    //     info!("The wgpu workgroup size: {}", &workgroup_count);
+    //
+    //     let s_staging_buffer = utils::BufferWrapper::stage_with_size(
+    //         self.device(),
+    //         s_buffer_size,
+    //         Some("Staging S Buffer"),
+    //     );
+    //     let s_storage_buffer = utils::BufferWrapper::storage_with_content(
+    //         self.device(),
+    //         bytemuck::cast_slice(s_values.as_slice()),
+    //         Some("Storage S Buffer"),
+    //     );
+    //
+    //     let binding_group_layout = utils::wgpu_utils::assign_bind_groups(
+    //         self.device(),
+    //         vec![&s_storage_buffer, &s_staging_buffer],
+    //     );
+    //     let improve_s_pipeline = utils::wgpu_utils::create_compute_shader_pipeline(
+    //         self.device(),
+    //         &compute_s_shader_module,
+    //         &binding_group_layout,
+    //         Some("Compute s pipeline"),
+    //     )?;
+    //     let binding_group = utils::wgpu_utils::create_bind_group(
+    //         self.context(),
+    //         &binding_group_layout,
+    //         vec![&s_storage_buffer, &s_staging_buffer],
+    //     );
+    //     let mut s_encoder = self
+    //         .device()
+    //         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    //
+    //     {
+    //         let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+    //             label: Some("s_pass"),
+    //             timestamp_writes: None,
+    //         });
+    //         s_pass.set_pipeline(&improve_s_pipeline);
+    //         s_pass.set_bind_group(0, &binding_group, &[]);
+    //         s_pass.dispatch_workgroups(max(workgroup_count, 1) as u32, 1, 1)
+    //     }
+    //
+    //     self.queue().submit(Some(s_encoder.finish()));
+    //
+    //     let output = utils::wgpu_utils::get_s_output::<S>(
+    //         self.context(),
+    //         s_storage_buffer.buffer(),
+    //         s_buffer_size,
+    //         s_staging_buffer.buffer(),
+    //     )
+    //     .await?;
+    //     if self.debug {
+    //         let mut debug_file = open_file_for_append("improve_s.debug")?;
+    //         for (i, chimp) in output.iter().enumerate() {
+    //             debug_msg.push_str(&format!("{}:{:?}\n", i, chimp));
+    //             if i % 64 == 0 {
+    //                 writeln!(debug_file, "{}", debug_msg)?;
+    //                 debug_msg.clear();
+    //             }
+    //         }
+    //         write!(debug_file, "{}", debug_msg)?;
+    //     }
+    //
+    //     info!("Improved Output result size: {}", output.len());
+    //     Ok(output)
+    // }
 
     async fn final_compress(
         &self,
@@ -269,22 +282,24 @@ impl ChimpCompressor {
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> Result<Vec<ChimpOutput>> {
-        let temp = include_str!("shaders/chimp_compress.wgsl").to_string();
+        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
+        let temp = include_str!("shaders/chimp_compress.wgsl")
+            .replace("#@workgroup_size(1)#", &workgroup_size)
+            .to_string();
         let final_compress_module = utils::wgpu_utils::create_shader_module(self.device(), &temp)?;
         let size_of_s = size_of::<S>();
-        let mut debug_msg = "".to_string();
         let size_of_output = size_of::<ChimpOutput>();
         let input_length = input.len();
-        log::info!("The length of the input vec: {}", input_length);
+        info!("The length of the input vec: {}", input_length);
 
         let s_buffer_size = (size_of_s * s_values.len()) as BufferAddress;
-        log::info!("The S buffer size in bytes: {}", &s_buffer_size);
+        info!("The S buffer size in bytes: {}", &s_buffer_size);
 
         let output_buffer_size = (size_of_output * s_values.len()) as BufferAddress;
-        log::info!("The Output buffer size in bytes: {}", &output_buffer_size);
+        info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
-        let workgroup_count = input.len().div(256);
-        log::info!("The wgpu workgroup size: {}", &workgroup_count);
+        let workgroup_count = input.len().div(get_buffer_size());
+        info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = utils::BufferWrapper::stage_with_size(
             self.device(),
             output_buffer_size,
@@ -356,17 +371,20 @@ impl ChimpCompressor {
         )
         .await?;
         if self.debug {
-            let mut debug_file = open_file_for_append("final_compress.debug")?;
-            for (i, chimp) in output.iter().enumerate() {
-                debug_msg.push_str(&format!("{}:{}\n", i, chimp));
-                if i % 64 == 0 {
-                    write!(debug_file, "{}", debug_msg)?;
-                    debug_msg.clear();
-                }
+            // let mut debug_file = open_file_for_append("final_compress.debug")?;
+            // for (i, chimp) in output.iter().enumerate() {
+            //     debug_msg.push_str(&format!("{}:{}\n", i, chimp));
+            //     if i % 64 == 0 {
+            //         write!(debug_file, "{}", debug_msg)?;
+            //         debug_msg.clear();
+            //     }
+            // }
+            // write!(debug_file, "{}", debug_msg)?;
+            for (i, o) in output.iter().enumerate() {
+                println!("{i}:{}", o);
             }
-            write!(debug_file, "{}", debug_msg)?;
         }
-        let length_without_padding = output.len() - padding;
+        let length_without_padding = output.len() - padding - 1;
         Ok(output[..length_without_padding].to_vec())
     }
 
@@ -410,69 +428,73 @@ impl Default for ChimpCompressor {
 
 #[async_trait]
 impl Compressor for ChimpCompressor {
-    async fn compress(&self, values: &mut Vec<f32>) -> Result<Vec<u8>> {
+    async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>> {
         let times = std::time::Instant::now();
         let mut padding: usize = 0;
-        if values.len() % 64 != 0 {
-            let count = values.len() % 256;
+        let buffer_size = get_buffer_size();
+        let mut values = initial_values.to_owned();
+        if values.len() % buffer_size != 0 {
+            let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
             padding = count;
             for _i in 0..count {
                 values.push(0f32);
             }
         }
         let mut total_millis = 0;
-        log::info!("Starting s computation stage");
-        log::info!("============================");
+        info!("Starting s computation stage");
+        info!("============================");
         let mut s_values: Vec<S>;
         let chimp_vec: Vec<ChimpOutput>;
         let output_vec: BitVec;
         {
-            s_values = self.compute_s(values).await?;
+            s_values = self.compute_s(&mut values).await?;
         }
-        log::info!("============================");
-        log::info!("Finished s computation stage");
+        info!("============================");
+        info!("Finished s computation stage");
         total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
+        info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        info!("Total time elapsed: {}ms", total_millis);
+        info!("============================");
 
-        log::info!("Started s propagation stage");
-        log::info!("============================");
-        let times = std::time::Instant::now();
-        {
-            s_values = self.improve_s(&mut s_values).await?;
-        }
-        log::info!("============================");
-        log::info!("Finished s propagation stage");
-        total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
+        // info!("Started s propagation stage");
+        // info!("============================");
+        // let times = std::time::Instant::now();
+        // {
+        //     s_values = self.improve_s(&mut s_values).await?;
+        // }
+        // info!("============================");
+        // info!("Finished s propagation stage");
+        // total_millis += times.elapsed().as_millis();
+        // info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        // info!("Total time elapsed: {}ms", total_millis);
+        // info!("============================");
 
-        log::info!("Starting final output stage");
-        log::info!("============================");
+        info!("Starting final output stage");
+        info!("============================");
         let times = std::time::Instant::now();
         {
-            chimp_vec = self.final_compress(values, &mut s_values, padding).await?;
+            chimp_vec = self
+                .final_compress(&mut values, &mut s_values, padding)
+                .await?;
         }
-        log::info!("============================");
-        log::info!("Finished final output stage");
+        info!("============================");
+        info!("Finished final output stage");
         total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
-        log::info!("Starting Result collection");
-        log::info!("============================");
+        info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        info!("Total time elapsed: {}ms", total_millis);
+        info!("============================");
+        info!("Starting Result collection");
+        info!("============================");
         let times = std::time::Instant::now();
         {
-            output_vec = self.collect_to_bit_vec(values, &chimp_vec)?;
+            output_vec = self.collect_to_bit_vec(&mut values, &chimp_vec)?;
         }
-        log::info!("============================");
-        log::info!("Finished Result collection");
+        info!("============================");
+        info!("Finished Result collection");
         total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
+        info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        info!("Total time elapsed: {}ms", total_millis);
+        info!("============================");
 
         Ok(output_vec.to_bytes())
     }
@@ -482,7 +504,6 @@ impl Compressor for ChimpCompressor {
 mod tests {
     use crate::utils::bit_utils::{ceil_log2, to_bit_vec, BitReadable, BitWritable};
     use bit_vec::BitVec;
-
     #[allow(clippy::identity_op)]
     #[test]
     fn test1() {

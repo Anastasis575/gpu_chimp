@@ -2,8 +2,10 @@ use anyhow::Result;
 use compress::cpu_compress::{
     CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
 };
+use compress::utils::bit_utils::to_bit_vec;
 use compress::utils::general_utils::{check_for_debug_mode, open_file_for_append};
 use itertools::Itertools;
+use log::info;
 use std::cmp::min;
 use std::io::Write;
 use std::{env, fs};
@@ -11,11 +13,13 @@ use std::{env, fs};
 #[tokio::main]
 pub async fn main() -> Result<()> {
     env_logger::init();
-    let mut values = get_values().expect("Could not read test values")[0..600].to_vec();
+    let mut values = get_values().expect("Could not read test values");
 
-    // for (i, value) in values.iter().enumerate() {
-    //     println!("{}:{}", i, value);
-    // }
+    if check_for_debug_mode().expect("Could not read file system") {
+        for (i, value) in values.iter().enumerate() {
+            info!("{}:{} - {}", i, value, to_bit_vec(value.to_bits()));
+        }
+    }
 
     //Scenario for gpu_compress
     gpu_compress(&mut values).await?;
@@ -41,25 +45,6 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Started decompression");
     let decompressed = timed_decompressor.decompress(&mut compressed).await?;
     println!("Finished decompression");
-    // if fs::exists("output_diff")? {
-    //     fs::remove_file("output_diff")?;
-    // }
-    //
-    // let mut file = open_file_for_append("output_diff").expect("Couldn't open file");
-    // let mut diff_msg = String::new();
-    // for i in 0..min(values.len(), decompressed.len()) {
-    //     if values[i] != decompressed[i] {
-    //         diff_msg.push_str(&format!(
-    //             "difference at {i}: {} vs {}",
-    //             values[i], decompressed[i]
-    //         ));
-    //         if diff_msg.lines().count() % 64 == 0 {
-    //             write!(file, "{}", diff_msg).expect("Couldn't append to file");
-    //             diff_msg = String::new();
-    //         }
-    //     }
-    // }
-    // write!(file, "{}", diff_msg).expect("Couldn't append to file");
     Ok(())
 }
 
@@ -77,24 +62,6 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Started decompression");
     let decompressed = cpu_model.decompress(&mut compressed).await?;
     println!("Finished decompression");
-    if fs::exists("output_diff")? {
-        fs::remove_file("output_diff")?;
-    }
-    let mut file = open_file_for_append("output_diff").expect("Couldn't open file");
-    let mut diff_msg = String::new();
-    for i in 0..min(values.len(), decompressed.len()) {
-        // if values[i] != decompressed[i] {
-        diff_msg.push_str(&format!(
-            "difference at {i}: {} vs {}\n",
-            values[i], decompressed[i]
-        ));
-        if diff_msg.lines().count() % 64 == 0 {
-            write!(file, "{}", diff_msg).expect("Couldn't append to file");
-            diff_msg = String::new();
-        }
-        // }
-    }
-    write!(file, "{}", diff_msg).expect("Couldn't append to file");
     Ok(())
 }
 

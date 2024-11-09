@@ -3,7 +3,6 @@ struct S{
     leading:i32,
     trailing:i32,
     equal:u32,
-    pr_lead:u32,
 }
 
 struct Output{
@@ -32,8 +31,9 @@ fn compress(v:f32,s:S,v_prev:f32,s_prev:S) -> Output{
     var trail_gt_6=u32(s.trailing>6);
     var trail_le_6=u32(s.trailing<=6);
     var not_equal=u32(!bool(s.equal));
-    var pr_lead_eq_lead=u32(s.leading==i32(s.pr_lead));
-    var pr_lead_ne_lead=u32(s.leading!=i32(s.pr_lead));
+    var pr_lead=u32(s_prev.leading);
+    var pr_lead_eq_lead=u32(s.leading==i32(pr_lead));
+    var pr_lead_ne_lead=u32(s.leading!=i32(pr_lead));
 
     //Constants
     //0x1000 0000 0000 0000 0000 0000 0000 0000
@@ -42,7 +42,7 @@ fn compress(v:f32,s:S,v_prev:f32,s_prev:S) -> Output{
     //input
     var v_prev_u32=bitcast<u32>(v_prev);
     var v_u32=bitcast<u32>(v);
-    var xorred:u32= u32(v_prev_u32^v_u32);
+    var xorred:u32= v_prev_u32^v_u32;
 
     var center_bits=u32(32-s.leading-s.trailing);
 
@@ -98,9 +98,10 @@ fn vec_condition(condition:u32)->vec2<u32>{
 fn pseudo_u64_shift(output:vec2<u32>,number:u32)->vec2<u32>{
     var first_number_bits:u32=extractBits(output.y,32-number,number);
     var new_output=vec2(output.x,output.y);
-    new_output.x = output.x << number;
+    var check = u32(number < 32);
+    new_output.x = check*(output.x << number);
     new_output.x += first_number_bits;
-    new_output.y = output.y<<number;
+    new_output.y = check*(output.y<<number);
 
     return new_output;
 }
@@ -120,7 +121,7 @@ fn pseudo_u64_add(output:vec2<u32>,number:u32)->vec2<u32>{
 }
 
 @compute
-@workgroup_size(256)
+#@workgroup_size(1)#
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     out[global_id.x+1] = compress(in[global_id.x+1],s_store[global_id.x+1],in[global_id.x],s_store[global_id.x]);
 }

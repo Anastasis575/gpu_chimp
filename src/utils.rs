@@ -245,11 +245,37 @@ pub mod bit_utils {
 
 /// General Utility Functions
 pub mod general_utils {
+    use log::warn;
+    use std::env::VarError;
     use std::fs;
     use std::fs::OpenOptions;
+    use std::num::ParseIntError;
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
         Ok(fs::exists("anastasis.debug")?)
+    }
+
+    pub fn get_buffer_size() -> usize {
+        let final_buffer = match std::env::var("CHIMP_BUFFER_SIZE") {
+            Ok(buffer_str) => {
+                let buffer_i32 = buffer_str.parse::<usize>().unwrap_or_else(|_| {
+                    warn!("Buffer size specified but not in usize format... defaulting to 32");
+                    32
+                });
+                if ![32usize, 64usize, 128usize, 256usize].contains(&buffer_i32) {
+                    warn!("Buffer size must be one of the following values [32,64,128,256]... defaulting to 32");
+                    32
+                } else {
+                    buffer_i32
+                }
+            }
+            Err(_) => {
+                warn!("No explicit buffer size used... defaulting to 32");
+                32
+            }
+        };
+        std::env::set_var("CHIMP_BUFFER_SIZE", final_buffer.to_string());
+        final_buffer
     }
 
     pub fn open_file_for_append(file_name: &str) -> anyhow::Result<fs::File> {

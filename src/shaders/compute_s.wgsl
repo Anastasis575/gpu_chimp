@@ -3,7 +3,6 @@ struct S{
     leading:i32,
     trailing:i32,
     equal:u32,
-    pr_lead:u32,
 }
 
 
@@ -24,11 +23,11 @@ fn calculate_s(v_prev:f32,v:f32) -> S{
    var leading=i32(countLeadingZeros(i));
    var trailing=i32(countTrailingZeros(i));
    var equal=u32(i==0);
-   return S(leading,trailing,equal,0);
+   return S(leading,trailing,equal);
 }
 
 @compute
-@workgroup_size(256)
+#@workgroup_size(1)#
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     s_store[global_id.x+1] = calculate_s(in[global_id.x],in[global_id.x+1]);
 }

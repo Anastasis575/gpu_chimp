@@ -42,5 +42,4 @@ pub struct S {
     head: i32,
     tail: i32,
     equal: u32,
-    pr_lead: u32,
 }
