@@ -43,6 +43,7 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Started decompression");
     let decompressed = timed_decompressor.decompress(&mut compressed).await?;
     println!("Finished decompression");
+    count_matching_values(values, &decompressed);
     Ok(())
 }
 
@@ -60,6 +61,7 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Started decompression");
     let decompressed = cpu_model.decompress(&mut compressed).await?;
     println!("Finished decompression");
+    count_matching_values(values, &decompressed);
     Ok(())
 }
 
@@ -77,6 +79,29 @@ fn get_values() -> Result<Vec<f32>> {
     Ok(values)
 }
 
+fn count_matching_values(values: &Vec<f32>, decompressed: &[f32]) -> usize {
+    let mut count_equal = 0;
+    let mut count_almost_equal = 0;
+    decompressed.iter().zip(values).for_each(|(a, b)| {
+        if a == b {
+            count_equal += 1;
+        } else if f32::abs(a - b) < 0.01 {
+            count_almost_equal += 1;
+        }
+    });
+    info!(
+        "The number of values that are equal to the initial dataset is {}({})",
+        count_equal,
+        100 * count_equal / values.len()
+    );
+    info!(
+        "The number of values that are almost equal to the initial dataset is {}({})",
+        count_almost_equal,
+        100 * count_almost_equal / values.len()
+    );
+    count_equal
+}
+
 fn get_third(field: &str) -> Option<String> {
     field
         .split(",")
@@ -87,10 +112,9 @@ fn get_third(field: &str) -> Option<String> {
 
 #[cfg(test)]
 mod compress_test {
-    use crate::get_values;
-    use bit_vec::BitVec;
+    use crate::{count_matching_values, get_values};
     use compress_utils::cpu_compress::{
-        CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
+        CPUCompressor, Compressor, Decompressor, TimedDecompressor,
     };
     use compress_utils::general_utils::check_for_debug_mode;
 
@@ -100,7 +124,8 @@ mod compress_test {
 
         let mut values = get_values().expect("Could not read test values");
         log::info!("Starting compression of {} values", values.len());
-        let mut compressor = wgpu_compress_32::ChimpCompressor::default();
+        let mut compressor =
+            wgpu_compress_32::ChimpCompressor::new("NVIDIA".to_string(), false).unwrap();
         if check_for_debug_mode().expect("Could not read file system") {
             compressor.set_debug(true);
         }
@@ -108,30 +133,12 @@ mod compress_test {
 
         let mut compressed = pollster::block_on(compressor.compress(&mut values)).unwrap();
         log::info!("Finished compression of {} values", values.len());
-        let total_compressed_bytes = compressed.len() * size_of::<u8>();
+        // let total_compressed_bytes = compressed.len() * size_of::<u8>();
         log::info!("Started decompression");
         let decompressed = pollster::block_on(cpu_model.decompress(&mut compressed)).unwrap();
         log::info!("Finished decompression");
 
-        let mut count_equal = 0;
-        let mut count_almost_equal = 0;
-        decompressed.iter().zip(&values).for_each(|(a, b)| {
-            if a == b {
-                count_equal += 1;
-            } else if f32::abs(a - b) < 0.01 {
-                count_almost_equal += 1;
-            }
-        });
-        log::info!(
-            "The number of values that are equal to the initial dataset is {}({})",
-            count_equal,
-            100 * count_equal / values.len()
-        );
-        log::info!(
-            "The number of values that are almost equal to the initial dataset is {}({})",
-            count_almost_equal,
-            100 * count_almost_equal / values.len()
-        );
+        let count_equal = count_matching_values(&values, &decompressed);
         log::info!(
             "The total size of the compressed dataset is {}",
             values.len() * size_of::<f32>(),

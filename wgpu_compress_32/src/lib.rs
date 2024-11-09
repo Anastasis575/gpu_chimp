@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{Ok, Result};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::bit_utils::to_bit_vec;
@@ -13,12 +13,50 @@ use std::cmp::{max, min};
 use std::ops::Div;
 use wgpu::{BufferAddress, Device, Queue};
 
+///General methods for ChimpCompressor
 impl ChimpCompressor {
     pub fn new(device: String, debug: bool) -> Result<Self> {
         let context = Context::initialize_with_adapter(device).block_on()?;
         Ok(Self { context, debug })
     }
 
+    pub fn context(&self) -> &Context {
+        &self.context
+    }
+    pub fn context_mut(&mut self) -> &mut Context {
+        &mut self.context
+    }
+
+    pub fn device(&self) -> &Device {
+        self.context.device()
+    }
+
+    pub fn queue(&self) -> &Queue {
+        self.context.queue()
+    }
+
+    fn collect_to_bit_vec(&self, input: &mut [f32], output: &Vec<ChimpOutput>) -> Result<BitVec> {
+        let mut output_vec = to_bit_vec(input[0].to_bits());
+        for value in output {
+            if value.bit_count() >= 32 {
+                for i in (0..(value.bit_count() - 32)).rev() {
+                    output_vec.push((value.content_x() >> i) % 2 == 1)
+                }
+            }
+            for i in (0..min(value.bit_count(), 32)).rev() {
+                output_vec.push((value.content_y() >> i) % 2 == 1)
+            }
+        }
+        Ok(output_vec)
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
+    }
+}
+
+///Compression Specific method implementations
+impl ChimpCompressor {
     pub async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
         // Create shader module and pipeline
         let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
@@ -105,22 +143,6 @@ impl ChimpCompressor {
         info!("Output result size: {}", output.len());
         Ok(output)
     }
-
-    pub fn context(&self) -> &Context {
-        &self.context
-    }
-    pub fn context_mut(&mut self) -> &mut Context {
-        &mut self.context
-    }
-
-    pub fn device(&self) -> &Device {
-        self.context.device()
-    }
-
-    pub fn queue(&self) -> &Queue {
-        self.context.queue()
-    }
-
     async fn final_compress(
         &self,
         input: &mut Vec<f32>,
@@ -222,29 +244,6 @@ impl ChimpCompressor {
         }
         let length_without_padding = output.len() - padding - 1;
         Ok(output[..length_without_padding].to_vec())
-    }
-
-    fn collect_to_bit_vec(
-        &self,
-        input: &mut Vec<f32>,
-        output: &Vec<ChimpOutput>,
-    ) -> Result<BitVec> {
-        let mut output_vec = to_bit_vec(input[0].to_bits());
-        for value in output {
-            if value.bit_count() >= 32 {
-                for i in (0..(value.bit_count() - 32)).rev() {
-                    output_vec.push((value.content_x() >> i) % 2 == 1)
-                }
-            }
-            for i in (0..min(value.bit_count(), 32)).rev() {
-                output_vec.push((value.content_y() >> i) % 2 == 1)
-            }
-        }
-        Ok(output_vec)
-    }
-
-    pub fn set_debug(&mut self, debug: bool) {
-        self.debug = debug;
     }
 }
 
