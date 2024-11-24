@@ -282,6 +282,7 @@ dependencies = [
  "anyhow",
  "bit-vec",
  "compress_utils",
+ "dotenv",
  "env_logger",
  "itertools",
  "log",
@@ -325,6 +326,12 @@ checksum = "cb6969eaabd2421f8a2775cfd2471a2b634372b4a25d41e3bd647b79912850a0"
 dependencies = [
  "litrs",
 ]
+
+[[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "either"
@@ -1319,6 +1326,25 @@ dependencies = [
  "bit-vec",
  "bytemuck",
  "compress_utils",
+ "flume",
+ "itertools",
+ "log",
+ "pollster",
+ "rand",
+ "wgpu",
+ "wgpu-types",
+]
+
+[[package]]
+name = "wgpu_compress_32_batched"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bit-vec",
+ "bytemuck",
+ "compress_utils",
+ "dotenv",
  "flume",
  "itertools",
  "log",

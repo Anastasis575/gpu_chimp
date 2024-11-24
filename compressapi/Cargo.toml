@@ -3,6 +3,10 @@ name = "compressapi"
 version = "0.1.0"
 edition = "2021"
 
+#[profile]
+#dev = { debug = true }
+[build]
+rustflags = ["-C", "debuginfo=2"]
 [dependencies]
 compress_utils = { path = "../compress_utils" }
 wgpu_compress_32 = { path = "../wgpu_compress_32" }
@@ -14,3 +18,4 @@ env_logger = "0.11.5"
 pollster = "0.4.0"
 log = { workspace = true }
 bit-vec = { workspace = true }
+dotenv = { workspace = true }

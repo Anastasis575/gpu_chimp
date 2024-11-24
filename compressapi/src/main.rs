@@ -4,12 +4,14 @@ use compress_utils::cpu_compress::{
     CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
 };
 use compress_utils::general_utils::check_for_debug_mode;
+use dotenv::dotenv;
 use itertools::Itertools;
 use log::info;
 use std::{env, fs};
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
+    // dotenv().expect("Failed to read .env file");
     env_logger::init();
     let mut values = get_values().expect("Could not read test values");
 

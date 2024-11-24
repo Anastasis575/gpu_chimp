@@ -3,11 +3,21 @@ use std::fmt;
 use std::fmt::Formatter;
 
 #[repr(C)]
-#[derive(Clone, Default, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput {
     content_x: u32,
     content_y: u32,
     bit_count: u32,
+}
+
+impl Default for ChimpOutput {
+    fn default() -> Self {
+        Self {
+            bit_count: 2,
+            content_y: 0,
+            content_x: 0,
+        }
+    }
 }
 
 impl ChimpOutput {

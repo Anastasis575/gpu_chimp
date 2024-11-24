@@ -11,6 +11,7 @@ use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::ops::Div;
+use std::process::Output;
 use wgpu::{BufferAddress, Device, Queue};
 
 ///General methods for ChimpCompressor
@@ -143,6 +144,7 @@ impl ChimpCompressor {
         info!("Output result size: {}", output.len());
         Ok(output)
     }
+    //noinspection ALL
     async fn final_compress(
         &self,
         input: &mut Vec<f32>,

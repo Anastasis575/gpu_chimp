@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use wgpu::{Adapter, Device, Queue};
 
+#[derive(Debug)]
 pub struct Context {
     device: Device,
     queue: Queue,

@@ -2,6 +2,7 @@
 members = [
     "compress_utils",
     "wgpu_compress_32",
+    "wgpu_compress_32_batched",
     "compressapi"
 ]
 resolver = "2"
@@ -18,3 +19,4 @@ bit-vec = "0.8.0"
 anyhow = "1.0.93"
 itertools = "0.13.0"
 log = "0.4.22"
+dotenv = "0.15.0"

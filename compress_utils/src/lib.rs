@@ -8,9 +8,11 @@ use wgpu::{Buffer, BufferAddress, BufferUsages, Device};
 pub enum BufferWrapper {
     StorageBuffer { buffer: Buffer, size: usize },
     StagingBuffer { buffer: Buffer, size: usize },
+    Uniform { buffer: Buffer, size: usize },
 }
 
 impl BufferWrapper {
+    ///Buffer getter
     pub fn buffer(&self) -> &Buffer {
         match self {
             BufferWrapper::StorageBuffer {
@@ -21,8 +23,13 @@ impl BufferWrapper {
                 buffer,
                 size: _size,
             } => buffer,
+            BufferWrapper::Uniform {
+                buffer,
+                size: _size,
+            } => buffer,
         }
     }
+    ///Create a staging buffer with pre-existing-content
     pub fn stage_with_content(device: &Device, contents: &[u8], label: Option<&str>) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label,
@@ -69,6 +76,17 @@ impl BufferWrapper {
             size: size as usize,
         }
     }
+    pub fn uniform_with_content(device: &Device, contents: &[u8], label: Option<&str>) -> Self {
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label,
+            contents,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+        BufferWrapper::Uniform {
+            buffer,
+            size: size_of_val(contents) / size_of::<u8>(),
+        }
+    }
 }
 
 /// WGPU utility functions
@@ -106,6 +124,19 @@ pub mod wgpu_utils {
                     count += 1;
                 }
                 BufferWrapper::StagingBuffer { .. } => {}
+                &&BufferWrapper::Uniform { .. } => {
+                    binding_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
+                        binding: count,
+                        visibility: ShaderStages::COMPUTE,
+                        ty: BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform {},
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    });
+                    count += 1;
+                }
             }
         }
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -178,6 +209,13 @@ pub mod wgpu_utils {
                     count += 1;
                 }
                 BufferWrapper::StagingBuffer { .. } => {}
+                BufferWrapper::Uniform { buffer, .. } => {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: count,
+                        resource: buffer.as_entire_binding(),
+                    });
+                    count += 1;
+                }
             }
         }
         context
@@ -253,28 +291,22 @@ pub mod general_utils {
 
     use std::fs;
     use std::fs::OpenOptions;
+    use std::path::Path;
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
-        Ok(fs::exists("anastasis.debug")?)
+        Ok(Path::new("anastasis.debug").exists())
     }
 
     pub fn get_buffer_size() -> usize {
+        let default_buffer = 64usize;
         let final_buffer = match std::env::var("CHIMP_BUFFER_SIZE") {
-            Ok(buffer_str) => {
-                let buffer_i32 = buffer_str.parse::<usize>().unwrap_or_else(|_| {
-                    warn!("Buffer size specified but not in usize format... defaulting to 32");
-                    32
-                });
-                if ![32usize, 64usize, 128usize, 256usize].contains(&buffer_i32) {
-                    warn!("Buffer size must be one of the following values [32,64,128,256]... defaulting to 32");
-                    32
-                } else {
-                    buffer_i32
-                }
-            }
+            Ok(buffer_str) => buffer_str.parse::<usize>().unwrap_or_else(|_| {
+                warn!("Buffer size specified but not in usize format... defaulting to 32");
+                default_buffer
+            }),
             Err(_) => {
                 warn!("No explicit buffer size used... defaulting to 32");
-                32
+                default_buffer
             }
         };
         std::env::set_var("CHIMP_BUFFER_SIZE", final_buffer.to_string());
