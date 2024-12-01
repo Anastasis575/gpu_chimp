@@ -32,6 +32,18 @@ impl ChimpOutput {
     pub fn bit_count(&self) -> u32 {
         self.bit_count
     }
+
+    pub fn set_content_x(&mut self, content_x: u32) {
+        self.content_x = content_x;
+    }
+
+    pub fn set_content_y(&mut self, content_y: u32) {
+        self.content_y = content_y;
+    }
+
+    pub fn set_bit_count(&mut self, bit_count: u32) {
+        self.bit_count = bit_count;
+    }
 }
 
 impl fmt::Display for ChimpOutput {

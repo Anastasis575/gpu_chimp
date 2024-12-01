@@ -294,7 +294,17 @@ pub mod general_utils {
     use std::path::Path;
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
-        Ok(Path::new("anastasis.debug").exists())
+        let debug = false;
+        let final_debug = if let Ok(buffer_str) = std::env::var("CHIMP_DEBUG") {
+            if buffer_str == "true" {
+                true
+            } else {
+                debug
+            }
+        } else {
+            debug
+        };
+        Ok(final_debug)
     }
 
     pub fn get_buffer_size() -> usize {

@@ -289,6 +289,7 @@ dependencies = [
  "pollster",
  "tokio",
  "wgpu_compress_32",
+ "wgpu_compress_32_batched",
 ]
 
 [[package]]
@@ -1345,6 +1346,7 @@ dependencies = [
  "bytemuck",
  "compress_utils",
  "dotenv",
+ "env_logger",
  "flume",
  "itertools",
  "log",

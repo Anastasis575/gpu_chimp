@@ -10,6 +10,7 @@ rustflags = ["-C", "debuginfo=2"]
 [dependencies]
 compress_utils = { path = "../compress_utils" }
 wgpu_compress_32 = { path = "../wgpu_compress_32" }
+wgpu_compress_32_batched = { path = "../wgpu_compress_32_batched" }
 
 anyhow = { workspace = true }
 itertools = { workspace = true }

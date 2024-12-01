@@ -13,7 +13,7 @@ use std::{env, fs};
 pub async fn main() -> Result<()> {
     // dotenv().expect("Failed to read .env file");
     env_logger::init();
-    let mut values = get_values().expect("Could not read test values");
+    let mut values = get_values().expect("Could not read test values")[..256].to_vec();
 
     if check_for_debug_mode().expect("Could not read file system") {
         for (i, value) in values.iter().enumerate() {
@@ -51,7 +51,7 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
 
 async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     println!("Starting compression of {} values", values.len());
-    let mut compressor = wgpu_compress_32::ChimpCompressor::default();
+    let mut compressor = wgpu_compress_32_batched::ChimpCompressorBatched::default();
     if check_for_debug_mode().expect("Could not read file system") {
         compressor.set_debug(true);
     }
@@ -69,7 +69,7 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
 
 fn get_values() -> Result<Vec<f32>> {
     let dir = env::current_dir()?;
-    let file_path = dir.parent().unwrap().join("city_temperature.csv");
+    let file_path = dir.join("city_temperature.csv");
     let file_txt = fs::read_to_string(file_path)?;
     let values = file_txt
         .split("\n")
