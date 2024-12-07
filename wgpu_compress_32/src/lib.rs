@@ -4,9 +4,10 @@ use bit_vec::BitVec;
 use compress_utils::bit_utils::to_bit_vec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::Compressor;
-use compress_utils::general_utils::get_buffer_size;
+use compress_utils::general_utils::{get_buffer_size, ThisIsStupid};
 use compress_utils::types::{ChimpOutput, S};
-use compress_utils::{wgpu_utils, BufferWrapper};
+use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper};
+use general_utils::add_padding_to_fit_buffer_count;
 use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
@@ -266,59 +267,37 @@ impl Default for ChimpCompressor {
 #[async_trait]
 impl Compressor for ChimpCompressor {
     async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>> {
-        let times = std::time::Instant::now();
-        let mut padding: usize = 0;
+        let mut padding = ThisIsStupid(0);
         let buffer_size = get_buffer_size();
         let mut values = initial_values.to_owned();
-        if values.len() % buffer_size != 0 {
-            let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
-            padding = count;
-            for _i in 0..count {
-                values.push(0f32);
-            }
-        }
+        values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
         let mut total_millis = 0;
-        info!("Starting s computation stage");
-        info!("============================");
         let mut s_values: Vec<S>;
         let chimp_vec: Vec<ChimpOutput>;
         let output_vec: BitVec;
-        {
-            s_values = self.compute_s(&mut values).await?;
-        }
-        info!("============================");
-        info!("Finished s computation stage");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
-
-        info!("Starting final output stage");
-        info!("============================");
-        let times = std::time::Instant::now();
-        {
-            chimp_vec = self
-                .final_compress(&mut values, &mut s_values, padding)
-                .await?;
-        }
-        info!("============================");
-        info!("Finished final output stage");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
-        info!("Starting Result collection");
-        info!("============================");
-        let times = std::time::Instant::now();
-        {
-            output_vec = self.collect_to_bit_vec(&mut values, &chimp_vec)?;
-        }
-        info!("============================");
-        info!("Finished Result collection");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
+        time_it!(
+            {
+                s_values = self.compute_s(&mut values).await?;
+            },
+            total_millis,
+            "s computation stage"
+        );
+        time_it!(
+            {
+                chimp_vec = self
+                    .final_compress(&mut values, &mut s_values, padding.0)
+                    .await?;
+            },
+            total_millis,
+            "final output stage".to_string()
+        );
+        time_it!(
+            {
+                output_vec = self.collect_to_bit_vec(&mut values, &chimp_vec)?;
+            },
+            total_millis,
+            "Result collection".to_string()
+        );
 
         Ok(output_vec.to_bytes())
     }

@@ -3,15 +3,15 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::Compressor;
-use compress_utils::general_utils::get_buffer_size;
+use compress_utils::general_utils::{
+    add_padding_to_fit_buffer_count, get_buffer_size, ThisIsStupid,
+};
 use compress_utils::types::{ChimpOutput, S};
-use compress_utils::{wgpu_utils, BufferWrapper};
-use itertools::Itertools;
+use compress_utils::{time_it, wgpu_utils, BufferWrapper};
 use log::info;
 use pollster::FutureExt;
 use std::cmp::max;
 use std::ops::Div;
-use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[derive(Debug)]
@@ -31,60 +31,37 @@ impl Default for ChimpCompressorBatched {
 #[async_trait]
 impl Compressor for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>> {
-        let times = std::time::Instant::now();
-        let mut padding: usize = 0;
+        let mut padding = ThisIsStupid(0);
         let buffer_size = get_buffer_size();
         let mut values = vec.to_owned();
-        if values.len() % buffer_size != 0 {
-            let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
-            padding = count;
-            for _i in 0..count {
-                values.push(0f32);
-            }
-        }
+        values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
         let mut total_millis = 0;
         let mut s_values: Vec<S>;
         let mut chimp_vec: Vec<ChimpOutput>;
-        info!("Starting s computation stage");
-        info!("============================");
         let output_vec: BitVec;
-        {
-            s_values = self.compute_s(&mut values).await?;
-        }
-        info!("============================");
-        info!("Finished s computation stage");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
-
-        info!("Starting final output stage");
-        info!("============================");
-        let times = Instant::now();
-        {
-            chimp_vec = self
-                .final_compress(&mut values, &mut s_values, padding)
-                .await?;
-        }
-        chimp_vec[0].set_content_y(values[0].to_bits());
-        info!("============================");
-        info!("Finished final output stage");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
-        info!("Starting Result collection");
-        info!("============================");
-        let times = Instant::now();
-        {
-            output_vec = BitVec::from_bytes(self.finalize(&mut chimp_vec).await?.as_slice());
-        }
-        info!("============================");
-        info!("Finished Result collection");
-        total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", total_millis);
-        info!("============================");
+        time_it!(
+            {
+                s_values = self.compute_s(&mut values).await?;
+            },
+            total_millis,
+            "s computation stage"
+        );
+        time_it!(
+            {
+                chimp_vec = self
+                    .final_compress(&mut values, &mut s_values, padding.0)
+                    .await?;
+            },
+            total_millis,
+            "final output stage"
+        );
+        time_it!(
+            {
+                output_vec = BitVec::from_bytes(self.finalize(&mut chimp_vec).await?.as_slice());
+            },
+            total_millis,
+            "final Result collection"
+        );
 
         Ok(output_vec.to_bytes())
     }
@@ -231,12 +208,12 @@ impl ChimpCompressorBatched {
 
         let useful_byte_count_storage = BufferWrapper::storage_with_size(
             self.device(),
-            workgroup_count as BufferAddress,
+            (workgroup_count * size_of::<u32>()) as BufferAddress,
             Some("Useful Storage Buffer"),
         );
         let useful_byte_count_staging = BufferWrapper::stage_with_size(
             self.device(),
-            workgroup_count as BufferAddress,
+            (workgroup_count * size_of::<u32>()) as BufferAddress,
             Some("Useful Staging Buffer"),
         );
 
@@ -291,10 +268,27 @@ impl ChimpCompressorBatched {
             out_stage_buffer.buffer(),
         )
         .await?;
-        for num in &output {
-            println!("{}", num);
+        let indexes = wgpu_utils::get_s_output::<u32>(
+            self.context(),
+            useful_byte_count_storage.buffer(),
+            (workgroup_count * size_of::<u32>()) as BufferAddress,
+            useful_byte_count_staging.buffer(),
+        )
+        .await?;
+        let mut final_vec = Vec::<u8>::new();
+        for (i, useful_byte_count) in indexes.iter().enumerate() {
+            let start_index = i * buffer_size;
+            let byte_count = *useful_byte_count as usize;
+            // for num in &output[start_index..start_index + byte_count + 1] {
+            //     println!("{}", num);
+            // }
+            final_vec.extend(
+                output[start_index..start_index + byte_count + 1]
+                    .iter()
+                    .flat_map(|it| it.to_ne_bytes()),
+            );
         }
-        Ok(output.iter().flat_map(|it| it.to_ne_bytes()).collect_vec())
+        Ok(final_vec)
     }
     async fn final_compress(
         &self,
@@ -396,7 +390,12 @@ impl ChimpCompressorBatched {
             }
         }
         let length_without_padding = output.len() - padding - 1;
-        Ok(output[..length_without_padding].to_vec())
+        let mut c = ChimpOutput::default();
+        c.set_content_y(bytemuck::cast(input[0]));
+        c.set_bit_count(32);
+        let mut final_output = vec![c];
+        final_output.extend(output[..length_without_padding].to_vec());
+        Ok(final_output)
     }
 
     pub fn debug(&self) -> bool {

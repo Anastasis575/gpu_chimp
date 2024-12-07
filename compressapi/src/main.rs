@@ -22,6 +22,7 @@ pub async fn main() -> Result<()> {
     }
 
     //Scenario for gpu_compress
+    gpu_compress_batched(&mut values).await?;
     gpu_compress(&mut values).await?;
 
     //Scenario for cpu compression
@@ -49,8 +50,8 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
     Ok(())
 }
 
-async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
-    println!("Starting compression of {} values", values.len());
+async fn gpu_compress_batched(values: &mut Vec<f32>) -> Result<()> {
+    println!("Starting batched compression of {} values", values.len());
     let mut compressor = wgpu_compress_32_batched::ChimpCompressorBatched::default();
     if check_for_debug_mode().expect("Could not read file system") {
         compressor.set_debug(true);
@@ -60,10 +61,27 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     let mut compressed = compressor.compress(values).await?;
     println!("Finished compression of {} values", values.len());
 
-    println!("Started decompression");
-    let decompressed = cpu_model.decompress(&mut compressed).await?;
-    println!("Finished decompression");
-    count_matching_values(values, &decompressed);
+    // println!("Started decompression");
+    // let decompressed = cpu_model.decompress(&mut compressed).await?;
+    // println!("Finished decompression");
+    // count_matching_values(values, &decompressed);
+    Ok(())
+}
+async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
+    println!("Starting compression of {} values", values.len());
+    let mut compressor = wgpu_compress_32::ChimpCompressor::default();
+    if check_for_debug_mode().expect("Could not read file system") {
+        compressor.set_debug(true);
+    }
+    let cpu_model = TimedDecompressor::from(CPUCompressor::default());
+
+    let mut compressed = compressor.compress(values).await?;
+    println!("Finished compression of {} values", values.len());
+
+    // println!("Started decompression");
+    // let decompressed = cpu_model.decompress(&mut compressed).await?;
+    // println!("Finished decompression");
+    // count_matching_values(values, &decompressed);
     Ok(())
 }
 

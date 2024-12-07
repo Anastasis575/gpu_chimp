@@ -291,7 +291,40 @@ pub mod general_utils {
 
     use std::fs;
     use std::fs::OpenOptions;
+    use std::ops::Div;
     use std::path::Path;
+
+    pub struct ThisIsStupid(pub usize);
+    pub fn add_padding_to_fit_buffer_count(
+        mut values: Vec<f32>,
+        buffer_size: usize,
+        padding: &mut ThisIsStupid,
+    ) -> Vec<f32> {
+        if values.len() % buffer_size != 0 {
+            let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
+            padding.0 = count;
+            for _i in 0..count {
+                values.push(0f32);
+            }
+        }
+        values
+    }
+
+    #[macro_export]
+    macro_rules! time_it {
+    ($var:block,$total_millis:expr,$stage_name:expr) => {
+        info!("Starting {}",$stage_name);
+        info!("============================");
+        let times = std::time::Instant::now();
+        $var
+        info!("============================");
+        info!("Finished {}",$stage_name );
+        $total_millis += times.elapsed().as_millis();
+        info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        info!("Total time elapsed: {}ms", $total_millis);
+        info!("============================");
+    }
+}
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
         let debug = false;
