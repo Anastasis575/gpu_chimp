@@ -4,7 +4,7 @@ use bit_vec::BitVec;
 use compress_utils::bit_utils::to_bit_vec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::Compressor;
-use compress_utils::general_utils::{get_buffer_size, ThisIsStupid};
+use compress_utils::general_utils::{get_buffer_size, Padding};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper};
 use general_utils::add_padding_to_fit_buffer_count;
@@ -267,10 +267,12 @@ impl Default for ChimpCompressor {
 #[async_trait]
 impl Compressor for ChimpCompressor {
     async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>> {
-        let mut padding = ThisIsStupid(0);
+        let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
+
         let mut values = initial_values.to_owned();
         values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
+
         let mut total_millis = 0;
         let mut s_values: Vec<S>;
         let chimp_vec: Vec<ChimpOutput>;

@@ -122,6 +122,7 @@ fn count_matching_values(values: &Vec<f32>, decompressed: &[f32]) -> usize {
     count_equal
 }
 
+#[inline]
 fn get_third(field: &str) -> Option<String> {
     field
         .split(",")

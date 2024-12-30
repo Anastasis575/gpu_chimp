@@ -239,6 +239,13 @@ pub mod bit_utils {
         }
         bit_vec
     }
+    pub fn to_bit_vec_u8(num: u8) -> BitVec {
+        let mut bit_vec = BitVec::new();
+        for i in (0..8).rev() {
+            bit_vec.push((num >> i) % 2 == 1);
+        }
+        bit_vec
+    }
     pub fn ceil_log2(number: u32) -> u32 {
         assert!(number > 0, "{}", number);
         let n = number.ilog2();
@@ -292,13 +299,12 @@ pub mod general_utils {
     use std::fs;
     use std::fs::OpenOptions;
     use std::ops::Div;
-    use std::path::Path;
 
-    pub struct ThisIsStupid(pub usize);
+    pub struct Padding(pub usize);
     pub fn add_padding_to_fit_buffer_count(
         mut values: Vec<f32>,
         buffer_size: usize,
-        padding: &mut ThisIsStupid,
+        padding: &mut Padding,
     ) -> Vec<f32> {
         if values.len() % buffer_size != 0 {
             let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
@@ -322,6 +328,7 @@ pub mod general_utils {
         $total_millis += times.elapsed().as_millis();
         info!("Stage execution time: {}ms", times.elapsed().as_millis());
         info!("Total time elapsed: {}ms", $total_millis);
+        info!("============================");
         info!("============================");
     }
 }

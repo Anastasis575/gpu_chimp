@@ -24,7 +24,7 @@ fn write(idx:u32)->u32{
     var current_i_bits_left=32u;
 
     var bits_to_add=0u;
-    var insertIndex=0u;
+    var insert_index=0u;
 
     var rest_bits=0u;
     var rest_fit=0;
@@ -38,10 +38,10 @@ fn write(idx:u32)->u32{
         if overflow_bits>0 && overflow_bits>=i32(current_i_bits_left){
             out[current_i]<<=u32(overflow_bits);
             bits_to_add=extractBits(chimp.content_x,0u,u32(overflow_bits));
-            insertIndex=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insertIndex,u32(overflow_bits));
+            insert_index=32u-current_i_bits_left;
+            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(overflow_bits));
 
-            if insertIndex+u32(overflow_bits)>=32u{
+            if insert_index+u32(overflow_bits)>=32u{
                 current_i++;
                 current_i_bits_left=32u;
             }else{
@@ -51,8 +51,8 @@ fn write(idx:u32)->u32{
             first_add=current_i_bits_left-u32(overflow_bits);
             out[current_i]<<=first_add;
             bits_to_add=extractBits(chimp.content_x,u32(overflow_bits)-first_add,first_add);
-            insertIndex=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insertIndex,u32(first_add));
+            insert_index=32u-current_i_bits_left;
+            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(first_add));
 
             current_i++;
             current_i_bits_left=32u;
@@ -65,8 +65,8 @@ fn write(idx:u32)->u32{
         rest_fit=i32(min(current_i_bits_left,rest_bits));
         out[current_i]<<=u32(rest_fit);
         bits_to_add=extractBits(chimp.content_y,u32(rest_bits)-u32(rest_fit),u32(rest_fit));
-        insertIndex=32u-current_i_bits_left;
-        out[current_i]=insertBits(out[current_i],bits_to_add,insertIndex,u32(rest_fit));
+        insert_index=32u-current_i_bits_left;
+        out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(rest_fit));
 
 
         if(current_i_bits_left>rest_bits){
@@ -77,8 +77,8 @@ fn write(idx:u32)->u32{
             current_i+=1u;
             out[current_i]<<=u32(rest_fit);
             bits_to_add=extractBits(chimp.content_y,0u,u32(rest_fit));
-            insertIndex=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insertIndex,u32(rest_fit));
+            insert_index=32u-current_i_bits_left;
+            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(rest_fit));
         }
     }
     return current_i;
