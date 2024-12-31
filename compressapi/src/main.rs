@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use compress_utils::bit_utils::to_bit_vec;
 use compress_utils::cpu_compress::{
     CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
@@ -40,11 +40,17 @@ async fn cpu_compress(values: &mut Vec<f32>) -> Result<()> {
     }
 
     println!("Starting compression of {} values", values.len());
-    let mut compressed = timed_compressor.compress(values).await?;
+    let mut compressed = timed_compressor
+        .compress(values)
+        .await
+        .map_err(|err| anyhow!("{}", err))?;
     println!("Finished compression of {} values", values.len());
 
     println!("Started decompression");
-    let decompressed = timed_decompressor.decompress(&mut compressed).await?;
+    let decompressed = timed_decompressor
+        .decompress(&mut compressed)
+        .await
+        .map_err(|err| anyhow!("{}", err))?;
     println!("Finished decompression");
     count_matching_values(values, &decompressed);
     Ok(())
@@ -58,7 +64,10 @@ async fn gpu_compress_batched(values: &mut Vec<f32>) -> Result<()> {
     }
     let cpu_model = TimedDecompressor::from(CPUCompressor::default());
 
-    let mut compressed = compressor.compress(values).await?;
+    let mut compressed = compressor
+        .compress(values)
+        .await
+        .map_err(|err| anyhow!("{}", err))?;
     println!("Finished compression of {} values", values.len());
 
     // println!("Started decompression");
@@ -75,7 +84,10 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
     }
     let cpu_model = TimedDecompressor::from(CPUCompressor::default());
 
-    let mut compressed = compressor.compress(values).await?;
+    let mut compressed = compressor
+        .compress(values)
+        .await
+        .map_err(|err| anyhow!("{}", err))?;
     println!("Finished compression of {} values", values.len());
 
     // println!("Started decompression");
@@ -87,7 +99,7 @@ async fn gpu_compress(values: &mut Vec<f32>) -> Result<()> {
 
 fn get_values() -> Result<Vec<f32>> {
     let dir = env::current_dir()?;
-    let file_path = dir.join("city_temperature.csv");
+    let file_path = dir.parent().unwrap().join("city_temperature.csv");
     let file_txt = fs::read_to_string(file_path)?;
     let values = file_txt
         .split("\n")

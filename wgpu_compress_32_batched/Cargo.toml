@@ -9,15 +9,11 @@ wgpu_compress_32 = { path = "../wgpu_compress_32" }
 anyhow = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
-rand = "0.8.5"
 bytemuck = { version = "1.19.0", features = ["derive"] }
-flume = "0.11.1"
 wgpu = { workspace = true }
 wgpu-types = { workspace = true }
 bit-vec = { workspace = true }
 async-trait = { workspace = true }
 pollster = "0.4.0"
-dotenv = { workspace = true }
-#env_logger = "0.11.5"
 tracing-subscriber = { workspace = true }
 tracing = "0.1.41"

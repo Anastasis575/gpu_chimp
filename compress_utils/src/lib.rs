@@ -92,12 +92,25 @@ impl BufferWrapper {
 /// WGPU utility functions
 pub mod wgpu_utils {
     use crate::context::Context;
+    use crate::cpu_compress::CompressionError;
     use crate::BufferWrapper;
     use anyhow::Result;
     use bytemuck::Pod;
+    use thiserror::Error;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
+    #[derive(Error, Debug)]
+    pub enum WgpuUtilsError {
+        #[error(transparent)]
+        InvalidShaderException(#[from] anyhow::Error),
+    }
+
+    impl From<WgpuUtilsError> for CompressionError {
+        fn from(value: WgpuUtilsError) -> Self {
+            CompressionError::FromBaseAnyhowError(anyhow::Error::from(value))
+        }
+    }
     pub fn create_shader_module(device: &Device, shader_content: &String) -> Result<ShaderModule> {
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -231,10 +244,21 @@ pub mod wgpu_utils {
 /// Bit vector utility functions and traits
 pub mod bit_utils {
     use bit_vec::BitVec;
+    use thiserror::Error;
+
+    #[derive(Error, Debug)]
+    pub enum BitError {}
 
     pub fn to_bit_vec(num: u32) -> BitVec {
         let mut bit_vec = BitVec::new();
         for i in (0..32).rev() {
+            bit_vec.push((num >> i) % 2 == 1);
+        }
+        bit_vec
+    }
+    pub fn to_bit_vec_no_padding(num: u32) -> BitVec {
+        let mut bit_vec = BitVec::new();
+        for i in (0..ceil_log2(num)).rev() {
             bit_vec.push((num >> i) % 2 == 1);
         }
         bit_vec

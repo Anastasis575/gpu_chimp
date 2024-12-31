@@ -1,11 +1,11 @@
-use anyhow::{Ok, Result};
 use async_trait::async_trait;
 use bit_vec::BitVec;
-use compress_utils::bit_utils::to_bit_vec;
-use compress_utils::context::Context;
-use compress_utils::cpu_compress::Compressor;
+use compress_utils::bit_utils::{to_bit_vec, BitError};
+use compress_utils::context::{Context, UtilError};
+use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{get_buffer_size, Padding};
 use compress_utils::types::{ChimpOutput, S};
+use compress_utils::wgpu_utils::WgpuUtilsError;
 use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper};
 use general_utils::add_padding_to_fit_buffer_count;
 use log::info;
@@ -17,7 +17,7 @@ use wgpu::{BufferAddress, Device, Queue};
 
 ///General methods for ChimpCompressor
 impl ChimpCompressor {
-    pub fn new(device: String, debug: bool) -> Result<Self> {
+    pub fn new(device: String, debug: bool) -> Result<Self, UtilError> {
         let context = Context::initialize_with_adapter(device).block_on()?;
         Ok(Self { context, debug })
     }
@@ -37,7 +37,11 @@ impl ChimpCompressor {
         self.context.queue()
     }
 
-    fn collect_to_bit_vec(&self, input: &mut [f32], output: &Vec<ChimpOutput>) -> Result<BitVec> {
+    fn collect_to_bit_vec(
+        &self,
+        input: &mut [f32],
+        output: &Vec<ChimpOutput>,
+    ) -> Result<BitVec, BitError> {
         let mut output_vec = to_bit_vec(input[0].to_bits());
         for value in output {
             if value.bit_count() >= 32 {
@@ -59,7 +63,7 @@ impl ChimpCompressor {
 
 ///Compression Specific method implementations
 impl ChimpCompressor {
-    pub async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
+    pub async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>, WgpuUtilsError> {
         // Create shader module and pipeline
         let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
         let temp = include_str!("shaders/compute_s.wgsl")
@@ -151,7 +155,7 @@ impl ChimpCompressor {
         input: &mut Vec<f32>,
         s_values: &mut Vec<S>,
         padding: usize,
-    ) -> Result<Vec<ChimpOutput>> {
+    ) -> Result<Vec<ChimpOutput>, WgpuUtilsError> {
         let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
         let temp = include_str!("shaders/chimp_compress.wgsl")
             .replace("#@workgroup_size(1)#", &workgroup_size)
@@ -266,7 +270,7 @@ impl Default for ChimpCompressor {
 
 #[async_trait]
 impl Compressor for ChimpCompressor {
-    async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>> {
+    async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
 
@@ -295,7 +299,11 @@ impl Compressor for ChimpCompressor {
         );
         time_it!(
             {
-                output_vec = self.collect_to_bit_vec(&mut values, &chimp_vec)?;
+                output_vec = self
+                    .collect_to_bit_vec(&mut values, &chimp_vec)
+                    .map_err(|err| {
+                        CompressionError::FromBaseAnyhowError(anyhow::Error::from(err))
+                    })?;
             },
             total_millis,
             "Result collection".to_string()
@@ -308,7 +316,9 @@ impl Compressor for ChimpCompressor {
 #[cfg(test)]
 mod tests {
     use bit_vec::BitVec;
-    use compress_utils::bit_utils::{ceil_log2, to_bit_vec, BitReadable, BitWritable};
+    use compress_utils::bit_utils::{
+        ceil_log2, to_bit_vec, to_bit_vec_no_padding, BitReadable, BitWritable,
+    };
 
     #[allow(clippy::identity_op)]
     #[test]
@@ -351,5 +361,12 @@ mod tests {
     fn test6() {
         assert_eq!(1 << 6, 2_i32.pow(6));
         assert_eq!(0xff01 % (1 << 8), 1);
+    }
+    #[test]
+    fn test7() {
+        let mut vec = BitVec::new();
+        vec.push(true);
+        vec.extend(to_bit_vec_no_padding(1));
+        assert_eq!(vec, to_bit_vec(3));
     }
 }

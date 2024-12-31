@@ -313,8 +313,11 @@ impl Finalize for CPUImpl {
 
         for i in 0..workgroup_count {
             let final_iter =
-                helper.out[(i * (helper.size as usize))..(helper.last_size[i] as usize)].iter();
-            let final_byte_vec = final_iter.flat_map(|it| it.to_ne_bytes()).collect_vec();
+                helper.out[(i * (helper.size as usize))..(helper.last_size[i] as usize)].to_vec();
+            let final_byte_vec = final_iter
+                .iter()
+                .flat_map(|it| it.to_le_bytes())
+                .collect_vec();
             final_output.extend(final_byte_vec);
         }
         Ok(final_output)
@@ -389,6 +392,19 @@ mod temp_test {
     fn test2() {
         let u = 113u32;
         let new_u = insertBits(u, 15, 1, 3);
-        assert_eq!(new_u, 127);
+        assert_eq!(new_u.to_ne_bytes(), 127u32.to_ne_bytes());
+    }
+
+    #[test]
+    fn test22() {
+        let u = 1757806588u32;
+        let extracted = extractBits(u, 0, 31);
+        let new_u = insertBits(0u32, extracted, 1, 31);
+        assert_eq!(new_u, 3515613177u32);
+    }
+    #[test]
+    fn testend() {
+        assert_eq!(125u32.to_ne_bytes(), 125u32.to_be_bytes());
+        assert_eq!(125u32.to_ne_bytes(), 125u32.to_le_bytes());
     }
 }

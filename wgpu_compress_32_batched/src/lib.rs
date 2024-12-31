@@ -9,7 +9,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
-use compress_utils::cpu_compress::Compressor;
+use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{add_padding_to_fit_buffer_count, get_buffer_size, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
@@ -40,7 +40,7 @@ impl Default for ChimpCompressorBatched {
 
 #[async_trait]
 impl Compressor for ChimpCompressorBatched {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
         let mut values = vec.to_owned();
@@ -179,73 +179,6 @@ mod tests {
         }
         let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
 
-        // let decompressor = CPUCompressor::default();
-        // let decompressed_values = decompressor
-        //     .decompress(&mut compressed_values)
-        //     .block_on()
-        //     .unwrap();
-
-        // env_logger::init();
-
-        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
-        log::info!("Starting compression of {} values", values.len());
-        let mut compressor = ChimpCompressorBatched {
-            finalizer: CPU,
-            ..ChimpCompressorBatched::default()
-        };
-        if check_for_debug_mode().expect("Could not read file system") {
-            compressor.set_debug(true);
-        }
-        let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-        fs::write(
-            "output1.log",
-            BitVec::from_bytes(compressed_values1.as_slice()).to_string(),
-        )
-        .unwrap();
-        fs::write(
-            "output2.log",
-            BitVec::from_bytes(compressed_values2.as_slice()).to_string(),
-        )
-        .unwrap();
-        // assert_eq!(compressed_values2, compressed_values1);
-
-        // let decompressor = CPUCompressor::default();
-        // let decompressed_values = decompressor
-        //     .decompress(&mut compressed_values)
-        //     .block_on()
-        //     .unwrap();
-    }
-    #[test]
-    fn test_decompress_able() {
-        let suscriber = tracing_subscriber::fmt()
-            .compact()
-            .with_writer(
-                OpenOptions::new()
-                    .create(true)
-                    .truncate(true)
-                    .write(true)
-                    .open("run.log")
-                    .unwrap(),
-            )
-            .finish();
-        suscriber.init();
-
-        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
-        log::info!("Starting compression of {} values", values.len());
-        let mut compressor = ChimpCompressor::default();
-        if check_for_debug_mode().expect("Could not read file system") {
-            compressor.set_debug(true);
-        }
-        let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
-
-        // let decompressor = CPUCompressor::default();
-        // let decompressed_values = decompressor
-        //     .decompress(&mut compressed_values)
-        //     .block_on()
-        //     .unwrap();
-
-        // env_logger::init();
-
         let mut values = get_values().expect("Could not read test values")[..256].to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
@@ -272,12 +205,73 @@ mod tests {
                 .join("\n"),
         )
         .unwrap();
-        // assert_eq!(compressed_values2, compressed_values1);
+        assert_eq!(compressed_values2, compressed_values1);
+    }
+    #[test]
+    fn test_decompress_able() {
+        let suscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_writer(
+                OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .write(true)
+                    .open("run.log")
+                    .unwrap(),
+            )
+            .finish();
+        suscriber.init();
+
+        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
+        log::info!("Starting compression of {} values", values.len());
+        let mut compressor = wgpu_compress_32::ChimpCompressor::default();
+        if check_for_debug_mode().expect("Could not read file system") {
+            compressor.set_debug(true);
+        }
+        let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
 
         // let decompressor = CPUCompressor::default();
         // let decompressed_values = decompressor
         //     .decompress(&mut compressed_values)
         //     .block_on()
         //     .unwrap();
+
+        // env_logger::init();
+
+        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
+        log::info!("Starting compression of {} values", values.len());
+        let mut compressor = ChimpCompressorBatched {
+            finalizer: CPU,
+            ..ChimpCompressorBatched::default()
+        };
+        if check_for_debug_mode().expect("Could not read file system") {
+            compressor.set_debug(true);
+        }
+        let mut compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
+        fs::write(
+            "output1.log",
+            compressed_values1
+                .iter()
+                .map(|it| to_bit_vec_u8(*it).to_string())
+                .join("\n"),
+        )
+        .unwrap();
+        fs::write(
+            "output2.log",
+            compressed_values2
+                .iter()
+                .map(|it| to_bit_vec_u8(*it).to_string())
+                .join("\n"),
+        )
+        .unwrap();
+        // assert_eq!(compressed_values2, compressed_values1);
+
+        let decompressor = CPUCompressor::default();
+        let decompressed_values = decompressor
+            .decompress(&mut compressed_values2)
+            .block_on()
+            .unwrap();
+
+        assert_eq!(decompressed_values, values);
     }
 }

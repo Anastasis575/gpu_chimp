@@ -22,3 +22,4 @@ log = "0.4.22"
 dotenv = "0.15.0"
 tracing-subscriber = { version = "0.3.19", features = ["tracing-log"] }
 tracing = "0.1.41"
+thiserror = "2.0.9"

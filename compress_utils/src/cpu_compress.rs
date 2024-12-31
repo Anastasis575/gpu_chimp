@@ -1,10 +1,34 @@
 use crate::bit_utils::{to_bit_vec, BitReadable, BitWritable};
 use async_trait::async_trait;
 use bit_vec::BitVec;
+use std::error::Error;
+use thiserror::Error;
 
 #[derive(Debug, Default, Clone)]
 pub struct CPUCompressor {
     debug: bool,
+}
+#[derive(Error, Debug)]
+pub enum CPUCompressError {
+    #[error("Wrong format on decompression input at bit {index} in byte {byte_index}",byte_index=(.index)/8)]
+    WrongFormat { index: usize },
+}
+
+#[derive(Error, Debug)]
+pub enum CompressionError {
+    #[error(transparent)]
+    CpuCompressError(#[from] CPUCompressError),
+    #[error(transparent)]
+    FromBaseError(#[from] Box<dyn std::error::Error + Send>),
+    #[error(transparent)]
+    FromBaseAnyhowError(#[from] anyhow::Error),
+}
+#[derive(Error, Debug)]
+pub enum DecompressionError {
+    #[error(transparent)]
+    CpuCompressError(#[from] CPUCompressError),
+    #[error(transparent)]
+    FromBaseAnyhowError(#[from] anyhow::Error),
 }
 
 impl CPUCompressor {
@@ -19,16 +43,16 @@ impl CPUCompressor {
 
 #[async_trait]
 pub trait Compressor {
-    async fn compress(&self, vec: &mut Vec<f32>) -> anyhow::Result<Vec<u8>>;
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError>;
 }
 
 #[async_trait]
 pub trait Decompressor {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> anyhow::Result<Vec<f32>>;
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError>;
 }
 #[async_trait]
 impl Compressor for CPUCompressor {
-    async fn compress(&self, vec: &mut Vec<f32>) -> anyhow::Result<Vec<u8>> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut bit_vec = to_bit_vec(vec[0].to_bits());
         let mut last_lead = 0;
         for i in 1..vec.len() {
@@ -42,6 +66,11 @@ impl Compressor for CPUCompressor {
                 } else {
                     bit_vec.push(true);
                     bit_vec.write_bits(lead as u32, 5);
+                    if lead + trail > 32 {
+                        return Err(CompressionError::from(CPUCompressError::WrongFormat {
+                            index: i,
+                        }));
+                    }
                     let center_bits = 32 - lead - trail;
                     bit_vec.write_bits(center_bits as u32, 5);
                     bit_vec.write_bits(xorred >> trail, center_bits as u32);
@@ -59,13 +88,13 @@ impl Compressor for CPUCompressor {
             }
             last_lead = lead;
         }
-        anyhow::Ok(bit_vec.to_bytes())
+        Ok(bit_vec.to_bytes())
     }
 }
 
 #[async_trait]
 impl Decompressor for CPUCompressor {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> anyhow::Result<Vec<f32>> {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         let input_vector = BitVec::from_bytes(vec.as_slice());
         let mut input_index: usize;
         let first_num_u32: u32 = input_vector.reinterpret_u32(0, 32);
@@ -92,6 +121,11 @@ impl Decompressor for CPUCompressor {
                     input_index += 5;
                 } else {
                     input_index += 1;
+                }
+                if lead > 32 {
+                    return Err(DecompressionError::from(CPUCompressError::WrongFormat {
+                        index: input_index,
+                    }));
                 }
                 let mut significant_bits = 32 - lead;
                 if significant_bits == 0 {
@@ -121,6 +155,11 @@ impl Decompressor for CPUCompressor {
                 if significant_bits == 0 {
                     significant_bits = 32;
                 }
+                if lead + significant_bits > 32 {
+                    return Err(DecompressionError::from(CPUCompressError::WrongFormat {
+                        index: input_index,
+                    }));
+                }
                 let trail = 32 - lead - significant_bits;
                 let mut value =
                     input_vector.reinterpret_u32(input_index, (32 - lead - trail) as usize);
@@ -149,7 +188,7 @@ impl Decompressor for CPUCompressor {
             }
         }
 
-        anyhow::Ok(output)
+        Ok(output)
     }
 }
 
@@ -173,7 +212,7 @@ impl<T> Decompressor for TimedDecompressor<T>
 where
     T: Decompressor + Send + Sync,
 {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> anyhow::Result<Vec<f32>> {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
         log::info!("Started cpu decompression stage");
@@ -185,7 +224,7 @@ where
         log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
         log::info!("Total time elapsed: {}ms", total_millis);
         log::info!("============================");
-        anyhow::Ok(output)
+        Ok(output)
     }
 }
 
@@ -205,7 +244,7 @@ impl<T> Compressor for TimedCompressor<T>
 where
     T: Compressor + Send + Sync,
 {
-    async fn compress(&self, vec: &mut Vec<f32>) -> anyhow::Result<Vec<u8>> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
         log::info!("Started cpu compression stage");
@@ -217,6 +256,6 @@ where
         log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
         log::info!("Total time elapsed: {}ms", total_millis);
         log::info!("============================");
-        anyhow::Ok(output)
+        Ok(output)
     }
 }

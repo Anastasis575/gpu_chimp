@@ -1,11 +1,24 @@
-use anyhow::anyhow;
 use itertools::Itertools;
-use wgpu::{Adapter, Device, Queue};
+use thiserror::Error;
+use wgpu::{Adapter, Device, Queue, RequestDeviceError};
 
 #[derive(Debug)]
 pub struct Context {
     device: Device,
     queue: Queue,
+}
+
+#[derive(Error, Debug)]
+pub enum UtilError {
+    #[error("Could not initialize the gpu context")]
+    Unintialized,
+    #[error("Could not find Adapter with this name {0}")]
+    UnknownAdapter(String),
+    #[error("Could not request Adapter with name {name}")]
+    UnbindableAdapter {
+        name: String,
+        source: RequestDeviceError,
+    },
 }
 
 impl Context {
@@ -26,14 +39,14 @@ impl Context {
         &mut self.queue
     }
 
-    pub async fn initialize_default_adapter() -> anyhow::Result<Self> {
+    pub async fn initialize_default_adapter() -> Result<Self, UtilError> {
         Self::_initialize(None).await
     }
-    pub async fn initialize_with_adapter(device: String) -> anyhow::Result<Self> {
+    pub async fn initialize_with_adapter(device: String) -> Result<Self, UtilError> {
         Self::_initialize(Some(device)).await
     }
 
-    async fn _initialize(device_name: Option<String>) -> anyhow::Result<Self> {
+    async fn _initialize(device_name: Option<String>) -> Result<Self, UtilError> {
         let instance = wgpu::Instance::default();
 
         let adapter_list: Vec<Adapter>;
@@ -43,13 +56,13 @@ impl Context {
                 .iter()
                 .filter(|adapter| adapter.get_info().name.contains(device.as_str()))
                 .find_or_first(|_| true)
-                .ok_or(anyhow!("Not found"))?
+                .ok_or(UtilError::UnknownAdapter(device.to_string()))?
                 .to_owned()
         } else {
             &instance
                 .request_adapter(&wgpu::RequestAdapterOptionsBase::default())
                 .await
-                .ok_or(anyhow!("Not found"))?
+                .ok_or(UtilError::Unintialized)?
         };
 
         let (device, queue) = adapter
@@ -62,8 +75,12 @@ impl Context {
                 },
                 None, //PLEASE ENABLE THE TRACE FEATURE,I NEED THIS
             )
-            .await?;
+            .await
+            .map_err(|source| UtilError::UnbindableAdapter {
+                name: adapter.get_info().name.to_string(),
+                source,
+            })?;
 
-        anyhow::Ok(Context::new(device, queue))
+        Ok(Context::new(device, queue))
     }
 }
