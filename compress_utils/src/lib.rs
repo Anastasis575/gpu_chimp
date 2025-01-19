@@ -319,10 +319,14 @@ pub mod bit_utils {
 /// General Utility Functions
 pub mod general_utils {
     use log::warn;
+    use std::collections::HashSet;
 
+    use itertools::Itertools;
     use std::fs;
     use std::fs::OpenOptions;
     use std::ops::Div;
+    use std::path::{Path, PathBuf};
+    use std::str::FromStr;
 
     pub struct Padding(pub usize);
     pub fn add_padding_to_fit_buffer_count(
@@ -385,6 +389,57 @@ pub mod general_utils {
         };
         std::env::set_var("CHIMP_BUFFER_SIZE", final_buffer.to_string());
         final_buffer
+    }
+
+    #[derive(Eq, PartialEq, Hash)]
+    pub enum Step {
+        ComputeS,
+        Compress,
+        Finalize,
+    }
+    impl Step {
+        pub fn get_trace_file(&self) -> PathBuf {
+            match self {
+                Step::ComputeS => {
+                    fs::create_dir_all("./traces/compute_s/").unwrap();
+                    PathBuf::from(format!("./traces/compute_s/trace_{}.log",chrono::Local::now().to_utc()))
+                }
+                Step::Compress => {
+                    fs::create_dir_all("./traces/compress/").unwrap();
+                    PathBuf::from(format!("./traces/compress/trace_{}.log",chrono::Local::now().to_utc()))
+                }
+                Step::Finalize => {
+                    fs::create_dir_all("./traces/finalize/").unwrap();
+                    PathBuf::from(format!("./traces/finalize/trace_{}.log",chrono::Local::now().to_utc()))
+                }
+            }
+        }
+    }
+    impl FromStr for Step {
+        type Err = anyhow::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "compute_s" => Ok(Step::ComputeS),
+                "compress" => Ok(Step::Compress),
+                "finalize" => Ok(Step::Finalize),
+                _ => Err(anyhow::anyhow!("Unknown step")),
+            }
+        }
+    }
+    pub fn trace_steps() -> HashSet<Step> {
+        let mut default_options = HashSet::new();
+        if let Ok(trace_options) = std::env::var("CHIMP_TRACE") {
+            trace_options
+                .split(";")
+                .flat_map(|it| it.parse::<Step>())
+                .for_each(|it| {
+                    default_options.insert(it);
+                });
+        } else {
+            warn!("No explicit trace options specified... defaulting to None");
+        }
+        default_options
     }
 
     pub fn open_file_for_append(file_name: &str) -> anyhow::Result<fs::File> {

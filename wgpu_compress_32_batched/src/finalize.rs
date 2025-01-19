@@ -2,12 +2,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bytemuck::Contiguous;
 use compress_utils::context::Context;
-use compress_utils::general_utils::get_buffer_size;
+use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::ChimpOutput;
 use compress_utils::{wgpu_utils, BufferWrapper};
 use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
+use std::fs;
 use std::ops::Div;
 use wgpu_types::BufferAddress;
 
@@ -154,257 +155,23 @@ impl<'a> Finalize for Finalizer<'a> {
             // for num in &output[start_index..start_index + byte_count + 1] {
             //     println!("{}", num);
             // }
+            final_vec.extend(byte_count.to_be_bytes().iter());
             final_vec.extend(
                 output[start_index..start_index + byte_count + 1]
                     .iter()
-                    .flat_map(|it| it.to_ne_bytes()),
+                    .flat_map(|it| it.to_be_bytes()),
             );
+        }
+        if trace_steps().contains(&Step::Finalize) {
+            let trace_path = Step::Finalize.get_trace_file();
+            let mut trace_output = String::new();
+
+            final_vec
+                .iter()
+                .for_each(|it| trace_output.push_str(&format!("{:08b}", it)));
+
+            fs::write(&trace_path, trace_output)?;
         }
         Ok(final_vec)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct CPUImpl {}
-struct CPUImplHelper {
-    size: u32,
-    last_size: Vec<u32>,
-    out: Vec<u32>,
-    chimp_input: Vec<ChimpOutput>,
-}
-
-impl CPUImplHelper {
-    fn write(&mut self, index: usize) -> u32 {
-        let mut current_i = 1u32;
-        let mut current_i_bits_left = 32u32;
-
-        let mut insert_index = 0u32;
-
-        let mut rest_bits = 0u32;
-        let mut rest_fit = 0;
-
-        self.out[0] = self.chimp_input[0].content_y();
-        for i in 1..index + (self.size as usize) {
-            let chimp: ChimpOutput = self.chimp_input[i];
-            let overflow_bits = (chimp.bit_count() as i32) - 32;
-            let current_str1 = Self::format_u32(self.out[current_i as usize]);
-            let current_str2 = Self::format_u32(self.out[max(current_i - 1, 0) as usize]);
-
-            if overflow_bits > 0 {
-                let fitting = get_fitting(overflow_bits as u32, current_i_bits_left);
-                let insert_index = get_insert_index(overflow_bits as u32, current_i_bits_left);
-                let bits_to_add = extractBits(
-                    chimp.content_x(),
-                    (overflow_bits - fitting as i32) as u32,
-                    fitting,
-                );
-                let current_str3 = Self::format_u32(bits_to_add);
-                let current_str4 = Self::format_u32(chimp.content_y());
-                self.out[current_i as usize] = insertBits(
-                    self.out[current_i as usize],
-                    bits_to_add,
-                    insert_index,
-                    fitting,
-                );
-                let current_str1 = Self::format_u32(self.out[current_i as usize]);
-                let current_str2 = Self::format_u32(self.out[max(current_i - 1, 0) as usize]);
-
-                if current_i_bits_left <= fitting {
-                    current_i += 1;
-                    current_i_bits_left = 32u32
-                } else {
-                    current_i_bits_left -= fitting;
-                }
-                let remaining = get_remaining(overflow_bits as u32, current_i_bits_left);
-                if remaining > 0 {
-                    let fitting = get_fitting(remaining, current_i_bits_left);
-                    let insert_index = get_insert_index(remaining, current_i_bits_left);
-                    let bits_to_add = extractBits(chimp.content_x(), 0, fitting);
-                    let current_str3 = Self::format_u32(bits_to_add);
-                    let current_str4 = Self::format_u32(chimp.content_y());
-                    self.out[current_i as usize] = insertBits(
-                        self.out[current_i as usize],
-                        bits_to_add,
-                        insert_index,
-                        fitting,
-                    );
-                    let current_str1 = Self::format_u32(self.out[current_i as usize]);
-                    let current_str2 = Self::format_u32(self.out[max(current_i - 1, 0) as usize]);
-
-                    if current_i_bits_left <= fitting {
-                        current_i += 1;
-                        current_i_bits_left = 32u32
-                    } else {
-                        current_i_bits_left -= fitting;
-                    }
-                }
-            }
-            rest_bits = min(chimp.bit_count(), 32u32);
-            let fitting = get_fitting(rest_bits, current_i_bits_left);
-            assert!(rest_bits >= fitting);
-            let insert_index = get_insert_index(rest_bits, current_i_bits_left);
-            let remaining = get_remaining(rest_bits, current_i_bits_left);
-            let bits_to_add = extractBits(chimp.content_y(), rest_bits - fitting, fitting);
-            let current_str3 = Self::format_u32(bits_to_add);
-            let current_str4 = Self::format_u32(chimp.content_y());
-
-            self.out[current_i as usize] = insertBits(
-                self.out[current_i as usize],
-                bits_to_add,
-                insert_index,
-                fitting,
-            );
-            let current_str1 = Self::format_u32(self.out[current_i as usize]);
-            let current_str2 = Self::format_u32(self.out[max(current_i - 1, 0) as usize]);
-
-            if current_i_bits_left <= fitting {
-                current_i += 1;
-                current_i_bits_left = 32u32
-            } else {
-                current_i_bits_left -= fitting;
-            }
-            if remaining > 0 {
-                let fitting = get_fitting(remaining, current_i_bits_left);
-                let insert_index = get_insert_index(remaining, current_i_bits_left);
-                let bits_to_add = extractBits(chimp.content_y(), 0, fitting);
-                let current_str3 = Self::format_u32(bits_to_add);
-                let current_str4 = Self::format_u32(chimp.content_y());
-                self.out[current_i as usize] = insertBits(
-                    self.out[current_i as usize],
-                    bits_to_add,
-                    insert_index,
-                    fitting,
-                );
-                let current_str1 = Self::format_u32(self.out[current_i as usize]);
-                let current_str2 = Self::format_u32(self.out[max(current_i - 1, 0) as usize]);
-
-                if current_i_bits_left <= fitting {
-                    current_i += 1;
-                    current_i_bits_left = 32u32
-                } else {
-                    current_i_bits_left -= fitting;
-                }
-            }
-        }
-        current_i
-    }
-
-    fn format_u32(p0: u32) -> String {
-        format!("{:032b}", p0)
-    }
-}
-#[async_trait]
-impl Finalize for CPUImpl {
-    async fn finalize(&self, chimp_output: &mut Vec<ChimpOutput>) -> Result<Vec<u8>> {
-        let out = vec![0; (1.5 * (chimp_output.len() as f32)).floor() as usize];
-        let workgroup_count = chimp_output.len() / 256;
-        let last_size = vec![0; workgroup_count];
-        let mut helper = CPUImplHelper {
-            chimp_input: chimp_output.to_owned(),
-            size: 256,
-            out,
-            last_size,
-        };
-
-        for i in 0..workgroup_count {
-            helper.last_size[i] = helper.write(i)
-        }
-        let mut final_output = Vec::new();
-
-        for i in 0..workgroup_count {
-            let final_iter =
-                helper.out[(i * (helper.size as usize))..(helper.last_size[i] as usize)].to_vec();
-            let final_byte_vec = final_iter
-                .iter()
-                .flat_map(|it| it.to_le_bytes())
-                .collect_vec();
-            final_output.extend(final_byte_vec);
-        }
-        Ok(final_output)
-    }
-}
-
-fn get_fitting(bits_rest_to_write: u32, writeable_output_remaining: u32) -> u32 {
-    min(bits_rest_to_write, writeable_output_remaining)
-}
-
-fn get_remaining(bits_rest_to_write: u32, writeable_output_remaining: u32) -> u32 {
-    max(
-        bits_rest_to_write - get_fitting(bits_rest_to_write, writeable_output_remaining),
-        0,
-    )
-}
-
-fn get_insert_index(bits_rest_to_write: u32, writeable_output_remaining: u32) -> u32 {
-    max(
-        writeable_output_remaining - get_fitting(bits_rest_to_write, writeable_output_remaining),
-        0,
-    )
-}
-
-fn insertBits(input_bits: u32, new_bits: u32, start_index: u32, bit_count: u32) -> u32 {
-    let mut output_bits = 0u32;
-
-    let end_index = min(start_index + bit_count, 32);
-    let copiable_values = end_index - start_index;
-
-    let bits_to_copy = new_bits % 2u32.pow(copiable_values);
-
-    if end_index < 32 {
-        // let to_end = 32 - end_index;
-        output_bits += input_bits >> end_index;
-        output_bits <<= copiable_values;
-    }
-    output_bits += bits_to_copy;
-    output_bits <<= start_index;
-    if start_index != 0 {
-        output_bits += input_bits % 2u32.pow(start_index);
-    }
-    output_bits
-}
-
-fn extractBits(input_bits: u32, start_index: u32, bit_count: u32) -> u32 {
-    let mut input_bits = input_bits;
-    let end_index = min(start_index + bit_count, 32);
-    let low_bound = u32::MAX_VALUE << start_index;
-    let high_bound = u32::MAX_VALUE >> (32 - end_index);
-
-    input_bits &= low_bound;
-    input_bits &= high_bound;
-    input_bits >> start_index
-}
-
-#[cfg(test)]
-mod temp_test {
-    use crate::finalize::{extractBits, insertBits};
-
-    #[test]
-    fn test1() {
-        let u = 127u32;
-        assert_eq!(extractBits(u, 3, 3), 7);
-    }
-    #[test]
-    fn test3() {
-        assert_eq!(7 / 3, 2);
-    }
-
-    #[test]
-    fn test2() {
-        let u = 113u32;
-        let new_u = insertBits(u, 15, 1, 3);
-        assert_eq!(new_u.to_ne_bytes(), 127u32.to_ne_bytes());
-    }
-
-    #[test]
-    fn test22() {
-        let u = 1757806588u32;
-        let extracted = extractBits(u, 0, 31);
-        let new_u = insertBits(0u32, extracted, 1, 31);
-        assert_eq!(new_u, 3515613177u32);
-    }
-    #[test]
-    fn testend() {
-        assert_eq!(125u32.to_ne_bytes(), 125u32.to_be_bytes());
-        assert_eq!(125u32.to_ne_bytes(), 125u32.to_le_bytes());
     }
 }

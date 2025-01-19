@@ -6,8 +6,8 @@ struct S{
 }
 
 struct Output{
-    content_x:u32,
-    content_y:u32,//because there is a scenario where 32 bits are not enough to reprisent the outcome
+    upper_bits:u32,
+    lower_bits:u32,//because there is a scenario where 32 bits are not enough to reprisent the outcome
     useful_size:u32
 }
 

@@ -16,12 +16,12 @@ var<storage, read_write> in: array<f32>; // this is used as both input and outpu
 
 
 
-fn calculate_s(v_prev:f32,v:f32) -> S{
+fn calculate_s(id:u32,v_prev:f32,v:f32) -> S{
    var v_prev_u32=bitcast<u32>(v_prev);
    var v_u32=bitcast<u32>(v);
    var i= v_prev_u32^v_u32;
 
-   var leading=i32(countLeadingZeros(i));
+   var leading=i32((id% @@workgroup_sizeu)!=0)*i32(countLeadingZeros(i));
    var trailing=i32(countTrailingZeros(i));
    var equal=u32(i==0);
 
@@ -38,7 +38,7 @@ fn calculate_s(v_prev:f32,v:f32) -> S{
 }
 
 @compute
-#@workgroup_size(1)#
+@workgroup_size(@@workgroup_size)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    s_store[global_id.x+1] = calculate_s(in[global_id.x],in[global_id.x+1]);
+    s_store[global_id.x+1] = calculate_s(global_id.x,in[global_id.x],in[global_id.x+1]);
 }

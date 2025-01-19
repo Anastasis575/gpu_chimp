@@ -12,7 +12,6 @@ use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::ops::Div;
-use std::process::Output;
 use wgpu::{BufferAddress, Device, Queue};
 
 ///General methods for ChimpCompressor
@@ -46,11 +45,11 @@ impl ChimpCompressor {
         for value in output {
             if value.bit_count() >= 32 {
                 for i in (0..(value.bit_count() - 32)).rev() {
-                    output_vec.push((value.content_x() >> i) % 2 == 1)
+                    output_vec.push((value.upper_bits() >> i) % 2 == 1)
                 }
             }
             for i in (0..min(value.bit_count(), 32)).rev() {
-                output_vec.push((value.content_y() >> i) % 2 == 1)
+                output_vec.push((value.lower_bits() >> i) % 2 == 1)
             }
         }
         Ok(output_vec)

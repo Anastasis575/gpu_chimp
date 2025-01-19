@@ -1,7 +1,6 @@
 use crate::bit_utils::{to_bit_vec, BitReadable, BitWritable};
 use async_trait::async_trait;
 use bit_vec::BitVec;
-use std::error::Error;
 use thiserror::Error;
 
 #[derive(Debug, Default, Clone)]

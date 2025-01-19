@@ -18,3 +18,4 @@ wgpu = { workspace = true }
 wgpu-types = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+chrono = { workspace = true }

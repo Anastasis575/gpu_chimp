@@ -1,12 +1,14 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::get_buffer_size;
+use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::S;
 use compress_utils::{wgpu_utils, BufferWrapper};
 use log::info;
 use std::cmp::max;
+use std::fmt::Formatter;
 use std::ops::Div;
+use std::{fmt, fs};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -38,9 +40,10 @@ impl<'a> ComputeSImpl<'a> {
 impl<'a> ComputeS for ComputeSImpl<'a> {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
         // Create shader module and pipeline
-        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
+        // let workgroup_size = format!("@workgroup_size({})", );
+
         let temp = include_str!("shaders/compute_s.wgsl")
-            .replace("#@workgroup_size(1)#", &workgroup_size)
+            .replace("@@workgroup_size", &get_buffer_size().to_string())
             .to_string();
         let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp)?;
 
@@ -112,6 +115,16 @@ impl<'a> ComputeS for ComputeSImpl<'a> {
         )
         .await?;
         info!("Output result size: {}", output.len());
+        if trace_steps().contains(&Step::ComputeS) {
+            let trace_path = Step::ComputeS.get_trace_file();
+            let mut trace_output = String::new();
+
+            output
+                .iter()
+                .for_each(|it| trace_output.push_str(it.to_string().as_str()));
+
+            fs::write(&trace_path, trace_output)?;
+        }
         Ok(output)
     }
 }

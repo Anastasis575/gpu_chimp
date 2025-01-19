@@ -3,6 +3,7 @@ old_code/
 /output_diff
 /city_temperature.csv
 /wgpu_compress_32_batched/output1.log
-/wgpu_compress_32_batched/output2.log
+/wgpu_compress_32_batched/output2_bak.log
 /wgpu_compress_32_batched/run.log
 /run.log
+/wgpu_compress_32_batched/output2.log

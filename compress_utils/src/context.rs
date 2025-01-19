@@ -59,7 +59,7 @@ impl Context {
                 .ok_or(UtilError::UnknownAdapter(device.to_string()))?
                 .to_owned()
         } else {
-            &instance
+            instance
                 .request_adapter(&wgpu::RequestAdapterOptionsBase::default())
                 .await
                 .ok_or(UtilError::Unintialized)?

@@ -8,18 +8,19 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-wgpu = { version = "23.0.0", default-features = false, features = [
+wgpu = { version = "24.0.0", default-features = false, features = [
     "wgsl",
     "dx12",
     "replay"
 ] }
-wgpu-types = "23.0.0"
+wgpu-types = "24.0.0"
 async-trait = "0.1.83"
 bit-vec = "0.8.0"
 anyhow = "1.0.93"
-itertools = "0.13.0"
+itertools = "0.14.0"
 log = "0.4.22"
 dotenv = "0.15.0"
 tracing-subscriber = { version = "0.3.19", features = ["tracing-log"] }
 tracing = "0.1.41"
+chrono = "0.4.39"
 thiserror = "2.0.9"
