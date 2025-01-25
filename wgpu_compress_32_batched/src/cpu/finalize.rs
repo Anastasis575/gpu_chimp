@@ -241,7 +241,11 @@ fn insert_bits(input_bits: u32, new_bits: u32, start_index: u32, bit_count: u32)
     let end_index = min(start_index + bit_count, 32);
     let copiable_values = end_index - start_index;
 
-    let bits_to_copy = new_bits % 2u32.pow(copiable_values);
+    let bits_to_copy = if copiable_values < 32 {
+        new_bits % 2u32.pow(copiable_values)
+    } else {
+        new_bits
+    };
 
     if end_index < 32 {
         // let to_end = 32 - end_index;
@@ -258,6 +262,7 @@ fn insert_bits(input_bits: u32, new_bits: u32, start_index: u32, bit_count: u32)
 
 fn extract_bits(input_bits: u32, start_index: u32, bit_count: u32) -> u32 {
     let mut input_bits = input_bits;
+    // assert!(start_index + bit_count > 32);
     let end_index = min(start_index + bit_count, 32);
     let low_bound = u32::MAX_VALUE << start_index;
     let high_bound = u32::MAX_VALUE >> (32 - end_index);
@@ -291,13 +296,21 @@ mod temp_test {
     #[test]
     fn test22() {
         let u = 1757806588u32;
-        let extracted = extract_bits(u, 0, 31);
-        let new_u = insert_bits(0u32, extracted, 1, 31);
-        assert_eq!(new_u, 3515613177u32);
+        let extracted = extract_bits(u, 25, 6);
+
+        let new_u = insert_bits(0xf000000fu32, extracted, 0, 6);
+        assert_eq!(new_u, 4026531892u32);
+    }
+    #[test]
+    fn test23() {
+        let u = 1757806588u32;
+        let extracted = extract_bits(u, 0, 32);
+        let new_u = insert_bits(0u32, extracted, 0, 32);
+        assert_eq!(new_u, 1757806588u32);
     }
     #[test]
     fn testend() {
-        assert_eq!(125u32.to_ne_bytes(), 125u32.to_be_bytes());
+        assert_ne!(125u32.to_ne_bytes(), 125u32.to_be_bytes());
         assert_eq!(125u32.to_ne_bytes(), 125u32.to_le_bytes());
     }
 }
