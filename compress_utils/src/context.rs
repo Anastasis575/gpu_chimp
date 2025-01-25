@@ -6,6 +6,7 @@ use wgpu::{Adapter, Device, Queue, RequestDeviceError};
 pub struct Context {
     device: Device,
     queue: Queue,
+    adapter: Adapter,
 }
 
 #[derive(Error, Debug)]
@@ -22,8 +23,12 @@ pub enum UtilError {
 }
 
 impl Context {
-    pub fn new(device: Device, queue: Queue) -> Self {
-        Self { device, queue }
+    pub fn new(device: Device, queue: Queue, adapter: Adapter) -> Self {
+        Self {
+            device,
+            queue,
+            adapter,
+        }
     }
 
     pub fn device(&self) -> &Device {
@@ -65,6 +70,7 @@ impl Context {
                 .ok_or(UtilError::Unintialized)?
         };
 
+        // let max_workgroup_x_size=adapter.get_info().
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -81,6 +87,6 @@ impl Context {
                 source,
             })?;
 
-        Ok(Context::new(device, queue))
+        Ok(Context::new(device, queue, adapter))
     }
 }

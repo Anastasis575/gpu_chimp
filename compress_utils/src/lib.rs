@@ -345,8 +345,24 @@ pub mod general_utils {
     }
 
     #[macro_export]
+    macro_rules! time_it_compound {
+        ($var:block,$total_millis:expr,$stage_name:expr,$stage_count:expr,$timeStruct:expr) => {
+            info!("Starting {} #{}",$stage_name,$stage_count);
+            info!("============================");
+            let times = std::time::Instant::now();
+            $var
+            info!("============================");
+            info!("Finished {} #{}",$stage_name,$stage_count);
+            $total_millis += times.elapsed().as_millis();
+            info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            info!("============================");
+            *$timeStruct.times.entry($stage_name.to_string()).or_insert(0)+=times.elapsed().as_millis();
+            $timeStruct.total_time +=times.elapsed().as_millis();
+        }
+    }
+    #[macro_export]
     macro_rules! time_it {
-    ($var:block,$total_millis:expr,$stage_name:expr) => {
+        ($var:block,$total_millis:expr,$stage_name:expr) => {
         info!("Starting {}",$stage_name);
         info!("============================");
         let times = std::time::Instant::now();
@@ -358,8 +374,8 @@ pub mod general_utils {
         info!("Total time elapsed: {}ms", $total_millis);
         info!("============================");
         info!("============================");
+        }
     }
-}
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
         let debug = false;
@@ -402,15 +418,24 @@ pub mod general_utils {
             match self {
                 Step::ComputeS => {
                     fs::create_dir_all("./traces/compute_s/").unwrap();
-                    PathBuf::from(format!("./traces/compute_s/trace_{}.log",chrono::Local::now().to_utc()))
+                    PathBuf::from(format!(
+                        "./traces/compute_s/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
                 }
                 Step::Compress => {
                     fs::create_dir_all("./traces/compress/").unwrap();
-                    PathBuf::from(format!("./traces/compress/trace_{}.log",chrono::Local::now().to_utc()))
+                    PathBuf::from(format!(
+                        "./traces/compress/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
                 }
                 Step::Finalize => {
                     fs::create_dir_all("./traces/finalize/").unwrap();
-                    PathBuf::from(format!("./traces/finalize/trace_{}.log",chrono::Local::now().to_utc()))
+                    PathBuf::from(format!(
+                        "./traces/finalize/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
                 }
             }
         }
