@@ -30,7 +30,7 @@ impl<'a> FinalCompressImpl<'a> {
     }
 
     pub fn context(&self) -> &Context {
-        &self.context
+        self.context
     }
 
     pub fn debug(&self) -> bool {
