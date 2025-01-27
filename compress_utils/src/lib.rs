@@ -111,7 +111,7 @@ pub mod wgpu_utils {
             CompressionError::FromBaseAnyhowError(anyhow::Error::from(value))
         }
     }
-    pub fn create_shader_module(device: &Device, shader_content: &String) -> Result<ShaderModule> {
+    pub fn create_shader_module(device: &Device, shader_content: &str) -> Result<ShaderModule> {
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_content)),
@@ -321,11 +321,10 @@ pub mod general_utils {
     use log::warn;
     use std::collections::HashSet;
 
-    use itertools::Itertools;
     use std::fs;
     use std::fs::OpenOptions;
     use std::ops::Div;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::str::FromStr;
 
     pub struct Padding(pub usize);

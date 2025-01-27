@@ -25,8 +25,10 @@ impl CPUImplHelper {
         let mut current_i = (out_offset as u32) + 1u32;
         let mut current_i_bits_left = 32u32;
 
+        let input_limit = min(self.chimp_input.len(), in_offset + (self.size as usize));
+
         self.out[out_offset] = self.chimp_input[in_offset].lower_bits();
-        for i in 1 + in_offset..in_offset + (self.size as usize) {
+        for i in 1 + in_offset..input_limit {
             let chimp: ChimpOutput = self.chimp_input[i];
             let overflow_bits = (chimp.bit_count() as i32) - 32;
             // let current_str1 = Self::format_u32(self.out[current_i as usize]);
@@ -150,27 +152,29 @@ impl CPUImplHelper {
         // );
         current_i
     }
-
-    fn format_u32(p0: u32) -> String {
-        format!("{:032b}", p0)
-    }
 }
 #[async_trait]
 impl Finalize for CPUImpl {
-    async fn finalize(&self, chimp_output: &mut Vec<ChimpOutput>) -> anyhow::Result<Vec<u8>> {
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput>,
+        padding: usize,
+    ) -> anyhow::Result<Vec<u8>> {
         //The number of iterations
         let workgroup_count = chimp_output.len() / get_buffer_size();
+
+        let actual_output = chimp_output[0..chimp_output.len() - padding].to_vec();
 
         // The output needs at worst  twice the number of 32-bit numbers to be coded along with one
         // space for the size of the workgroup in bytes
         // We come across this instance when each consecutive number in the series is too different from the other.
-        let out = vec![0; workgroup_count + (2 * chimp_output.len())];
+        let out = vec![0; workgroup_count + (2 * actual_output.len())];
 
         // The index of the final usable u32 in the out vector
         let last_size = vec![0; workgroup_count];
 
         let mut helper = CPUImplHelper {
-            chimp_input: chimp_output.to_owned(),
+            chimp_input: actual_output.to_owned(),
             size: get_buffer_size() as u32,
             out,
             last_size,
@@ -197,7 +201,15 @@ impl Finalize for CPUImpl {
                 .iter()
                 .flat_map(|it| it.to_be_bytes())
                 .collect_vec();
-            final_output.extend((get_buffer_size() as u32).to_be_bytes());
+
+            let batch_size =
+                if i == workgroup_count - 1 && helper.chimp_input.len() % get_buffer_size() != 0 {
+                    ((helper.chimp_input.len() % get_buffer_size()) - 1) as u8
+                } else {
+                    (get_buffer_size() - 1) as u8
+                };
+
+            final_output.extend(batch_size.to_be_bytes());
             final_output.extend((final_byte_vec.len() as u32).to_be_bytes());
             final_output.extend(&final_byte_vec);
         }

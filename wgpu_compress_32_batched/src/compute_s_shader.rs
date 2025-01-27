@@ -6,9 +6,8 @@ use compress_utils::types::S;
 use compress_utils::{wgpu_utils, BufferWrapper};
 use log::info;
 use std::cmp::max;
-use std::fmt::Formatter;
+use std::fs;
 use std::ops::Div;
-use std::{fmt, fs};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -26,7 +25,7 @@ impl<'a> ComputeSImpl<'a> {
     }
 
     pub fn context(&self) -> &Context {
-        &self.context
+        self.context
     }
     pub fn device(&self) -> &wgpu::Device {
         self.context.device()
@@ -37,7 +36,7 @@ impl<'a> ComputeSImpl<'a> {
 }
 
 #[async_trait]
-impl<'a> ComputeS for ComputeSImpl<'a> {
+impl ComputeS for ComputeSImpl<'_> {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
         // Create shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );

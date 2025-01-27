@@ -6,7 +6,7 @@ use wgpu::{Adapter, Device, Queue, RequestDeviceError};
 pub struct Context {
     device: Device,
     queue: Queue,
-    adapter: Adapter,
+    // adapter: Adapter,
 }
 
 #[derive(Error, Debug)]
@@ -27,7 +27,7 @@ impl Context {
         Self {
             device,
             queue,
-            adapter,
+            // adapter,
         }
     }
 
@@ -70,7 +70,7 @@ impl Context {
                 .ok_or(UtilError::Unintialized)?
         };
 
-        // let max_workgroup_x_size=adapter.get_info().
+        // let max_workgroup_x_size=adapter.get_info*/
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {

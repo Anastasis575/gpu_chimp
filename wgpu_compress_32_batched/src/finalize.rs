@@ -12,7 +12,11 @@ use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub(crate) trait Finalize {
-    async fn finalize(&self, chimp_output: &mut Vec<ChimpOutput>) -> Result<Vec<u8>>;
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput>,
+        padding: usize,
+    ) -> Result<Vec<u8>>;
 }
 
 pub(crate) struct Finalizer<'a> {
@@ -39,7 +43,11 @@ impl<'a> Finalizer<'a> {
 
 #[async_trait]
 impl<'a> Finalize for Finalizer<'a> {
-    async fn finalize(&self, chimp_output: &mut Vec<ChimpOutput>) -> Result<Vec<u8>> {
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput>,
+        padding: usize,
+    ) -> Result<Vec<u8>> {
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
         let final_compress_module = wgpu_utils::create_shader_module(self.device(), &temp)?;
         // let size_of_chimp = size_of::<ChimpOutput>();

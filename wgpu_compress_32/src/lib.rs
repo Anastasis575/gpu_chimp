@@ -243,11 +243,11 @@ impl ChimpCompressor {
             output_staging_buffer.buffer(),
         )
         .await?;
-        if self.debug {
-            for (i, o) in output.iter().enumerate() {
-                println!("{i}:{}", o);
-            }
-        }
+        // if self.debug {
+        //     for (i, o) in output.iter().enumerate() {
+        //         println!("{i}:{}", o);
+        //     }
+        // }
         let length_without_padding = output.len() - padding - 1;
         Ok(output[..length_without_padding].to_vec())
     }

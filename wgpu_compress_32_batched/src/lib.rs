@@ -65,7 +65,7 @@ impl Compressor for ChimpCompressorBatched {
         time_it!(
             {
                 chimp_vec = final_compress_impl
-                    .final_compress(&mut values, &mut s_values, padding.0)
+                    .final_compress(&mut values, &mut s_values, 0)
                     .await?;
             },
             total_millis,
@@ -73,8 +73,12 @@ impl Compressor for ChimpCompressorBatched {
         );
         time_it!(
             {
-                output_vec =
-                    BitVec::from_bytes(finalize_impl.finalize(&mut chimp_vec).await?.as_slice());
+                output_vec = BitVec::from_bytes(
+                    finalize_impl
+                        .finalize(&mut chimp_vec, padding.0)
+                        .await?
+                        .as_slice(),
+                );
             },
             total_millis,
             "final Result collection"
@@ -129,12 +133,11 @@ mod tests {
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::Cpu;
     use compress_utils::bit_utils::to_bit_vec_u8;
-    use compress_utils::cpu_compress::{Compressor, DecompressionError, Decompressor};
+    use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use decompressor::BatchedDecompressorCpu;
     use itertools::Itertools;
     use pollster::FutureExt;
-    use std::fs::OpenOptions;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -164,14 +167,14 @@ mod tests {
     fn test_matching_outputs() {
         let subscriber = tracing_subscriber::fmt()
             .compact()
-            .with_writer(
-                OpenOptions::new()
-                    .create(true)
-                    .truncate(true)
-                    .write(true)
-                    .open("run.log")
-                    .unwrap(),
-            )
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
             .finish();
         subscriber.init();
 
@@ -193,70 +196,28 @@ mod tests {
             compressor.set_debug(true);
         }
         let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-        fs::write(
-            "output1.log",
-            compressed_values1
-                .iter()
-                .map(|it| to_bit_vec_u8(*it).to_string())
-                .join("\n"),
-        )
-        .unwrap();
-        fs::write(
-            "output2_bak.log",
-            compressed_values2
-                .iter()
-                .map(|it| to_bit_vec_u8(*it).to_string())
-                .join("\n"),
-        )
-        .unwrap();
+
         assert_eq!(compressed_values2, compressed_values1);
     }
     //noinspection DuplicatedCode
     #[test]
-    ///
     fn test_decompress_able() {
-        let value_count = 0..1024;
+        // let value_count = 0..(256 * 109);
         let subscriber = tracing_subscriber::fmt()
             .compact()
-            .with_writer(
-                OpenOptions::new()
-                    .create(true)
-                    .truncate(true)
-                    .write(true)
-                    .open("run.log")
-                    .unwrap(),
-            )
+            .with_env_filter("wgpu_compress_32=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
             .finish();
         subscriber.init();
 
-        for i in 0..value_count.end / 256 {
-            let mut values =
-                get_values().expect("Could not read test values")[i * 256..(i + 1) * 256].to_vec();
-            log::info!("Starting compression of {} values", values.len());
-            let mut compressor = wgpu_compress_32::ChimpCompressor::default();
-            if check_for_debug_mode().expect("Could not read file system") {
-                compressor.set_debug(true);
-            }
-            let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
-            fs::write(
-                format!("output1_{i}.log"),
-                compressed_values1
-                    .iter()
-                    .map(|it| to_bit_vec_u8(*it).to_string())
-                    .join("\n"),
-            )
-            .unwrap();
-        }
-        // let decompressor = CPUCompressor::default();
-        // let decompressed_values = decompressor
-        //     .decompress(&mut compressed_values)
-        //     .block_on()
-        //     .unwrap();
-
-        // env_logger::init();
-
-        let mut values =
-            get_values().expect("Could not read test values")[value_count.clone()].to_vec();
+        let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
             finalizer: Cpu,
@@ -266,20 +227,15 @@ mod tests {
             compressor.set_debug(true);
         }
         let mut compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
+        let compressed_values3 = compressor.compress(&mut values).block_on().unwrap();
 
-        fs::write(
-            "output2.log",
-            compressed_values2
-                .iter()
-                .map(|it| to_bit_vec_u8(*it).to_string())
-                .join("\n"),
-        )
-        .unwrap();
-        // assert_eq!(compressed_values2, compressed_values1);
+        assert_eq!(compressed_values2, compressed_values3);
 
         let decompressor = BatchedDecompressorCpu::default();
         match decompressor.decompress(&mut compressed_values2).block_on() {
-            Ok(decompressed_values) => assert_eq!(decompressed_values, values),
+            Ok(decompressed_values) => {
+                assert_eq!(decompressed_values, values)
+            }
             Err(err) => {
                 eprintln!("Decompression error: {:?}", err);
                 panic!("{}", err);

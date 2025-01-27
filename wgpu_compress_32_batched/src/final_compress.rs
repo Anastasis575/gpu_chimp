@@ -21,21 +21,24 @@ pub trait FinalCompress {
 
 pub struct FinalCompressImpl<'a> {
     context: &'a Context,
-    debug: bool,
+    // debug: bool,
 }
 
 impl<'a> FinalCompressImpl<'a> {
     pub fn new(context: &'a Context, debug: bool) -> Self {
-        Self { context, debug }
+        Self {
+            context,
+            // debug
+        }
     }
 
     pub fn context(&self) -> &Context {
         self.context
     }
 
-    pub fn debug(&self) -> bool {
-        self.debug
-    }
+    // pub fn debug(&self) -> bool {
+    //     self.debug
+    // }
     pub fn device(&self) -> &wgpu::Device {
         self.context.device()
     }

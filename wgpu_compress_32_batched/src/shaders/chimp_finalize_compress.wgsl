@@ -41,9 +41,9 @@ fn get_insert_index(bits_rest_to_write: u32, writeable_output_remaining: u32) ->
 }
 
 fn write(idx:u32)->u32{
-    var current_i=idx+1u;
+    var current_i=1u;
     var current_i_bits_left=32u;
-
+    
     var bits_to_add=0u;
     var insert_index=0u;
 
@@ -54,15 +54,24 @@ fn write(idx:u32)->u32{
     for (var i: u32 = idx+1u; i < idx+size; i++) {
         var chimp:Output=in[i];
         var overflow_bits=i32(chimp.useful_size) - 32;
+        
         var first_add=0u;
         var second_add=0u;
+        
+        var fitting:u32=0u;
+        var insert_index:u32=0u;
+        var remaining:u32=0u;
+         
+        var bits_to_add:u32=0u;
+        
+        var rest_bits:u32=0u;
+         
         if overflow_bits>0 {
-            let fitting = get_fitting(u32(overflow_bits), current_i_bits_left);
-            let insert_index = get_insert_index(u32(overflow_bits), current_i_bits_left);
-            let remaining = get_remaining(u32(overflow_bits), current_i_bits_left);
-            bits_to_add=extractBits(chimp.upper_bits,0u,u32(overflow_bits));
-            insert_index=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(overflow_bits));
+            fitting = get_fitting(u32(overflow_bits), current_i_bits_left);
+            insert_index = get_insert_index(u32(overflow_bits), current_i_bits_left);
+            remaining = get_remaining(u32(overflow_bits), current_i_bits_left);
+            bits_to_add=extractBits(chimp.upper_bits,u32(overflow_bits-i32(fitting)),fitting);
+            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
 
             if current_i_bits_left<=fitting{
                 current_i += 1;
@@ -71,42 +80,41 @@ fn write(idx:u32)->u32{
                 current_i_bits_left -= fitting;
             }
             if remaining>0{
-                let fitting = get_fitting(remaining, current_i_bits_left);
-                let insert_index = get_insert_index(remaining, current_i_bits_left);
-                πg);
+                fitting = get_fitting(remaining, current_i_bits_left);
+                insert_index = get_insert_index(remaining, current_i_bits_left);
+                bits_to_add=extractBits(chimp.upper_bits,0,fitting);
+                out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+                if current_i_bits_left<=fitting{
+                    current_i += 1;
+                    current_i_bits_left = 32u;
+                }else{
+                    current_i_bits_left -= fitting;
+                }
             }
-//        }else if overflow_bits>0{
-            first_add=current_i_bits_left-u32(overflow_bits);
-            out[current_i]<<=first_add;
-            bits_to_add=extractBits(chimp.upper_bits,u32(overflow_bits)-first_add,first_add);
-            insert_index=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(first_add));
-
-            current_i++;
-            current_i_bits_left=32u;
-            second_add=u32(overflow_bits)-first_add;
-            bits_to_add=extractBits(chimp.upper_bits,0u,second_add);
-            out[current_i]=insertBits(out[current_i],bits_to_add,0u,second_add);
-            current_i_bits_left-=second_add;
         }
-        rest_bits=min(chimp.useful_size,32u);
-        rest_fit=i32(min(current_i_bits_left,rest_bits));
-        out[current_i]<<=u32(rest_fit);
-        bits_to_add=extractBits(chimp.lower_bits,u32(rest_bits)-u32(rest_fit),u32(rest_fit));
-        insert_index=32u-current_i_bits_left;
-        out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(rest_fit));
-
-
-        if(current_i_bits_left>rest_bits){
-            current_i_bits_left-=rest_bits;
+        rest_bits = min(chimp.bit_count, 32u);
+        fitting = get_fitting(rest_bits, current_i_bits_left);
+        insert_index=get_insert_index(rest_bits, current_i_bits_left);
+        remaining=get_remaining(rest_bits, current_i_bits_left);
+        bits_to_add=extract_bits(chimp.lower_bits, u32(rest_bits - fitting), fitting);
+        out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+        if current_i_bits_left<=fitting{
+            current_i += 1u;
+            current_i_bits_left = 32u;
         }else{
-            rest_fit=i32(rest_bits) - i32(current_i_bits_left);
-            current_i_bits_left=32u;
-            current_i+=1u;
-            out[current_i]<<=u32(rest_fit);
-            bits_to_add=extractBits(chimp.lower_bits,0u,u32(rest_fit));
-            insert_index=32u-current_i_bits_left;
-            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,u32(rest_fit));
+            current_i_bits_left -= fitting;
+        }
+        if remaining>0{
+             fitting = get_fitting(remaining, current_i_bits_left);
+             insert_index = get_insert_index(remaining, current_i_bits_left);
+             bits_to_add = extract_bits(chimp.lower_bits, 0, fitting);
+             out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+             if current_i_bits_left <= fitting {
+                current_i+= 1;
+                current_i_bits_left = 32u;
+             } else {
+                current_i_bits_left -= fitting;
+             }
         }
     }
     return current_i;
