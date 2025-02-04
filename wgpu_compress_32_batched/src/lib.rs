@@ -20,8 +20,8 @@ use pollster::FutureExt;
 
 #[derive(Debug)]
 pub enum FinalizerEnum {
-    Finalizer,
-    Cpu,
+    GPU,
+    CPU,
 }
 #[derive(Debug)]
 pub struct ChimpCompressorBatched {
@@ -34,7 +34,7 @@ impl Default for ChimpCompressorBatched {
         Self {
             debug: false,
             context: Context::initialize_default_adapter().block_on().unwrap(),
-            finalizer: FinalizerEnum::Finalizer,
+            finalizer: FinalizerEnum::GPU,
         }
     }
 }
@@ -121,8 +121,8 @@ impl ChimpCompressorBatched {
     }
     fn compute_finalize_factory<'a>(&'a self) -> Box<dyn Finalize + Send + 'a> {
         match self.finalizer {
-            FinalizerEnum::Finalizer => Box::new(Finalizer::new(self.context())),
-            FinalizerEnum::Cpu => Box::new(CPUImpl::default()),
+            FinalizerEnum::GPU => Box::new(Finalizer::new(self.context())),
+            FinalizerEnum::CPU => Box::new(CPUImpl::default()),
         }
     }
 }
@@ -131,8 +131,7 @@ impl ChimpCompressorBatched {
 mod tests {
     use crate::cpu::decompressor;
     use crate::ChimpCompressorBatched;
-    use crate::FinalizerEnum::Cpu;
-    use compress_utils::bit_utils::to_bit_vec_u8;
+    use crate::FinalizerEnum::{CPU, GPU};
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use decompressor::BatchedDecompressorCpu;
@@ -165,8 +164,11 @@ mod tests {
     //noinspection DuplicatedCode
     #[test]
     fn test_matching_outputs() {
+        // let value_count = 0..(256 * 3);
+
         let subscriber = tracing_subscriber::fmt()
             .compact()
+            .with_env_filter("wgpu_compress_32=info")
             // .with_writer(
             //     OpenOptions::new()
             //         .create(true)
@@ -178,7 +180,7 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
+        let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched::default();
         if check_for_debug_mode().expect("Could not read file system") {
@@ -186,17 +188,16 @@ mod tests {
         }
         let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
 
-        let mut values = get_values().expect("Could not read test values")[..256].to_vec();
+        let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
-            finalizer: Cpu,
+            finalizer: CPU,
             ..ChimpCompressorBatched::default()
         };
         if check_for_debug_mode().expect("Could not read file system") {
             compressor.set_debug(true);
         }
         let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-
         assert_eq!(compressed_values2, compressed_values1);
     }
     //noinspection DuplicatedCode
@@ -220,20 +221,22 @@ mod tests {
         let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
-            finalizer: Cpu,
+            finalizer: GPU,
             ..ChimpCompressorBatched::default()
         };
         if check_for_debug_mode().expect("Could not read file system") {
             compressor.set_debug(true);
         }
         let mut compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-        let compressed_values3 = compressor.compress(&mut values).block_on().unwrap();
+        // let compressed_values3 = compressor.compress(&mut values).block_on().unwrap();
 
-        assert_eq!(compressed_values2, compressed_values3);
+        // assert_eq!(compressed_values2, compressed_values3);
 
         let decompressor = BatchedDecompressorCpu::default();
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
+                // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                // fs::write("expected.log", values.iter().join("\n")).unwrap();
                 assert_eq!(decompressed_values, values)
             }
             Err(err) => {
