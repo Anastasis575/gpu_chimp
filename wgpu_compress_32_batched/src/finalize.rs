@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::ChimpOutput;
-use compress_utils::{wgpu_utils, BufferWrapper};
+use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
@@ -72,22 +72,26 @@ impl<'a> Finalize for Finalizer<'a> {
         let out_storage_buffer = BufferWrapper::storage_with_size(
             self.device(),
             output_buffer_size,
+            WgpuGroupId::new(0, 0),
             Some("Staging Output Buffer"),
         );
         let in_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(chimp_input.as_slice()),
+            WgpuGroupId::new(0, 1),
             Some("Staging Output Buffer"),
         );
         let size_uniform = BufferWrapper::uniform_with_content(
             self.device(),
             bytemuck::cast_slice(get_buffer_size().to_ne_bytes().as_slice()),
+            WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
 
         let useful_byte_count_storage = BufferWrapper::storage_with_size(
             self.device(),
             (workgroup_count * size_of::<u32>()) as BufferAddress,
+            WgpuGroupId::new(0, 3),
             Some("Useful Storage Buffer"),
         );
         let useful_byte_count_staging = BufferWrapper::stage_with_size(

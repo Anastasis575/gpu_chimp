@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::S;
-use compress_utils::{wgpu_utils, BufferWrapper};
+use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
 use std::fs;
@@ -63,6 +63,7 @@ impl ComputeS for ComputeSImpl<'_> {
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(padded_values.as_slice()),
+            WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
         let s_staging_buffer =
@@ -70,6 +71,7 @@ impl ComputeS for ComputeSImpl<'_> {
         let s_storage_buffer = BufferWrapper::storage_with_size(
             self.device(),
             s_buffer_size,
+            WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
 
