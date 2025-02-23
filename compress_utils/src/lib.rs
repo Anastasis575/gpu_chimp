@@ -327,7 +327,14 @@ pub mod general_utils {
     use std::path::PathBuf;
     use std::str::FromStr;
 
+    pub trait MaxGroupGnostic {
+        fn get_max_number_of_groups(&self, content_len: usize) -> usize;
+    }
+
+    ///A struct to be able to borrow a usize representing a padding
     pub struct Padding(pub usize);
+
+    /// Add 0s to the end of [values] to be able to seemlessly
     pub fn add_padding_to_fit_buffer_count(
         mut values: Vec<f32>,
         buffer_size: usize,

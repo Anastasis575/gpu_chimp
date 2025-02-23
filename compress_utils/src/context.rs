@@ -6,7 +6,7 @@ use wgpu::{Adapter, Device, Queue, RequestDeviceError};
 pub struct Context {
     device: Device,
     queue: Queue,
-    // adapter: Adapter,
+    adapter: Adapter,
 }
 
 #[derive(Error, Debug)]
@@ -27,7 +27,7 @@ impl Context {
         Self {
             device,
             queue,
-            // adapter,
+            adapter,
         }
     }
 
@@ -42,6 +42,17 @@ impl Context {
     }
     pub fn queue_mut(&mut self) -> &mut Queue {
         &mut self.queue
+    }
+
+    pub fn adapter(&self) -> &Adapter {
+        &self.adapter
+    }
+    pub fn adapter_mut(&mut self) -> &mut Adapter {
+        &mut self.adapter
+    }
+
+    pub fn get_max_workgroup_size(&self) -> usize {
+        self.adapter.limits().max_compute_workgroups_per_dimension as usize
     }
 
     pub async fn initialize_default_adapter() -> Result<Self, UtilError> {
@@ -70,7 +81,6 @@ impl Context {
                 .ok_or(UtilError::Unintialized)?
         };
 
-        // let max_workgroup_x_size=adapter.get_info*/
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {

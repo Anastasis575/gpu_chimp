@@ -40,5 +40,5 @@ fn calculate_s(id:u32,v_prev:f32,v:f32) -> S{
 @compute
 @workgroup_size(@@workgroup_size)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    s_store[global_id.x+1] = calculate_s(global_id.x,in[global_id.x],in[global_id.x+1]);
+    s_store[global_id.x+1] = calculate_s(@@start_index+global_id.x,in[global_id.x],in[global_id.x+1]);
 }

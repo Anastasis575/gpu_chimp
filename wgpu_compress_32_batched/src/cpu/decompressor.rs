@@ -4,7 +4,6 @@ use bit_vec::BitVec;
 use compress_utils::bit_utils::BitReadable;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::time_it;
-use indicatif;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

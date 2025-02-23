@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
+use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::S;
 use compress_utils::{wgpu_utils, BufferWrapper};
 use log::info;
@@ -11,7 +11,7 @@ use std::ops::Div;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-pub trait ComputeS {
+pub trait ComputeS: MaxGroupGnostic {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>>;
 }
 
@@ -33,6 +33,18 @@ impl<'a> ComputeSImpl<'a> {
     pub fn queue(&self) -> &wgpu::Queue {
         self.context.queue()
     }
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        self.context.adapter()
+    }
+    pub fn max_work_group_count(&self) -> usize {
+        self.context.get_max_workgroup_size()
+    }
+}
+
+impl MaxGroupGnostic for ComputeSImpl<'_> {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        content_len.div(get_buffer_size())
+    }
 }
 
 #[async_trait]
@@ -47,6 +59,8 @@ impl ComputeS for ComputeSImpl<'_> {
         let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp)?;
 
         //Calculating buffer sizes and workgroup counts
+        let workgroup_count = self.get_max_number_of_groups(values.len());
+        info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let size_of_s = size_of::<S>();
         let bytes = values.len() + 1;
@@ -54,9 +68,6 @@ impl ComputeS for ComputeSImpl<'_> {
 
         let s_buffer_size = (size_of_s * bytes) as BufferAddress;
         info!("The S buffer size in bytes: {}", s_buffer_size);
-
-        let workgroup_count = values.len().div(get_buffer_size());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let mut padded_values = Vec::from(values);
         padded_values.push(0f32);

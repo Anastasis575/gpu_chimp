@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
+use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{wgpu_utils, BufferWrapper};
 use log::info;
@@ -10,7 +10,7 @@ use std::ops::Div;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-pub trait FinalCompress {
+pub trait FinalCompress: MaxGroupGnostic {
     async fn final_compress(
         &self,
         input: &mut Vec<f32>,
@@ -47,8 +47,14 @@ impl<'a> FinalCompressImpl<'a> {
     }
 }
 
+impl MaxGroupGnostic for FinalCompressImpl<'_> {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        content_len.div(get_buffer_size())
+    }
+}
+
 #[async_trait]
-impl<'a> FinalCompress for FinalCompressImpl<'a> {
+impl<'a> FinalCompress for FinalCompressImpl<'_> {
     async fn final_compress(
         &self,
         input: &mut Vec<f32>,
@@ -71,7 +77,7 @@ impl<'a> FinalCompress for FinalCompressImpl<'a> {
         let output_buffer_size = (size_of_output * s_values.len()) as BufferAddress;
         info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
-        let workgroup_count = input.len().div(get_buffer_size());
+        let workgroup_count = self.get_max_number_of_groups(input.len());
         info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = BufferWrapper::stage_with_size(
             self.device(),
