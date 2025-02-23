@@ -5,12 +5,35 @@ pub mod types;
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferAddress, BufferUsages, Device};
 
+/// Buffer Wrapper enum to encapsulate the assignment
 pub enum BufferWrapper {
-    StorageBuffer { buffer: Buffer, size: usize },
-    StagingBuffer { buffer: Buffer, size: usize },
-    Uniform { buffer: Buffer, size: usize },
+    StorageBuffer {
+        buffer: Buffer,
+        size: usize,
+        group: u32,
+        binding: u32,
+    },
+    StagingBuffer {
+        buffer: Buffer,
+        size: usize,
+    },
+    Uniform {
+        buffer: Buffer,
+        size: usize,
+        group: u32,
+        binding: u32,
+    },
 }
 
+pub struct WgpuGroupId {
+    group: u32,
+    binding: u32,
+}
+impl WgpuGroupId {
+    pub fn new(group: u32, binding: u32) -> Self {
+        WgpuGroupId { group, binding }
+    }
+}
 impl BufferWrapper {
     ///Buffer getter
     pub fn buffer(&self) -> &Buffer {
@@ -18,6 +41,7 @@ impl BufferWrapper {
             BufferWrapper::StorageBuffer {
                 buffer,
                 size: _size,
+                ..
             } => buffer,
             BufferWrapper::StagingBuffer {
                 buffer,
@@ -26,10 +50,11 @@ impl BufferWrapper {
             BufferWrapper::Uniform {
                 buffer,
                 size: _size,
+                ..
             } => buffer,
         }
     }
-    ///Create a staging buffer with pre-existing-content
+    ///Create a staging buffer with pre-existing-content defined in the bytes in [contents] with an optional [label]
     pub fn stage_with_content(device: &Device, contents: &[u8], label: Option<&str>) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label,
@@ -41,6 +66,8 @@ impl BufferWrapper {
             size: size_of_val(contents) / size_of::<u8>(),
         }
     }
+
+    ///Create an empty staging buffer with [size] in bytes and an optional [label]
     pub fn stage_with_size(device: &Device, size: BufferAddress, label: Option<&str>) -> Self {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label,
@@ -53,7 +80,14 @@ impl BufferWrapper {
             size: size as usize,
         }
     }
-    pub fn storage_with_content(device: &Device, contents: &[u8], label: Option<&str>) -> Self {
+
+    ///Create a storage buffer with pre-existing-content defined in the bytes of [contents] with an optional [label]
+    pub fn storage_with_content(
+        device: &Device,
+        contents: &[u8],
+        group: WgpuGroupId,
+        label: Option<&str>,
+    ) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label,
             contents,
@@ -62,9 +96,18 @@ impl BufferWrapper {
         BufferWrapper::StorageBuffer {
             buffer,
             size: size_of_val(contents) / size_of::<u8>(),
+            group: group.group,
+            binding: group.binding,
         }
     }
-    pub fn storage_with_size(device: &Device, size: BufferAddress, label: Option<&str>) -> Self {
+
+    ///Create an empty staging buffer with [size] in bytes and an optional [label]
+    pub fn storage_with_size(
+        device: &Device,
+        size: BufferAddress,
+        wgpu_group_id: WgpuGroupId,
+        label: Option<&str>,
+    ) -> Self {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label,
             size,
@@ -74,9 +117,17 @@ impl BufferWrapper {
         BufferWrapper::StorageBuffer {
             buffer,
             size: size as usize,
+            group: wgpu_group_id.group,
+            binding: wgpu_group_id.binding,
         }
     }
-    pub fn uniform_with_content(device: &Device, contents: &[u8], label: Option<&str>) -> Self {
+    ///Create a uniform buffer with pre-existing content defined in the bytes of [content]  and an optional [label]
+    pub fn uniform_with_content(
+        device: &Device,
+        contents: &[u8],
+        wgpu_group_id: WgpuGroupId,
+        label: Option<&str>,
+    ) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label,
             contents,
@@ -85,6 +136,8 @@ impl BufferWrapper {
         BufferWrapper::Uniform {
             buffer,
             size: size_of_val(contents) / size_of::<u8>(),
+            group: wgpu_group_id.group,
+            binding: wgpu_group_id.binding,
         }
     }
 }
@@ -100,6 +153,7 @@ pub mod wgpu_utils {
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
+    /// Utility error description
     #[derive(Error, Debug)]
     pub enum WgpuUtilsError {
         #[error(transparent)]
@@ -107,10 +161,13 @@ pub mod wgpu_utils {
     }
 
     impl From<WgpuUtilsError> for CompressionError {
+        /// Error conversion Method
         fn from(value: WgpuUtilsError) -> Self {
             CompressionError::FromBaseAnyhowError(anyhow::Error::from(value))
         }
     }
+
+    /// Utility function to create a wgsl compute shader module to use in our pipeline from code defined in [shader_content]  
     pub fn create_shader_module(device: &Device, shader_content: &str) -> Result<ShaderModule> {
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -118,14 +175,17 @@ pub mod wgpu_utils {
         });
         Ok(cs_module)
     }
+
+    /// Utility function to create a bind group layout based on defined wrappers
+    ///     
+    /// Bind groups define which
     pub fn assign_bind_groups(device: &Device, bindings: Vec<&BufferWrapper>) -> BindGroupLayout {
-        let mut count = 0;
         let mut binding_group_layout_entries = Vec::<wgpu::BindGroupLayoutEntry>::new();
-        for binding in &bindings {
+        for binding in bindings {
             match binding {
-                BufferWrapper::StorageBuffer { .. } => {
+                &BufferWrapper::StorageBuffer { binding, .. } => {
                     binding_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-                        binding: count,
+                        binding,
                         visibility: ShaderStages::COMPUTE,
                         ty: BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -134,12 +194,11 @@ pub mod wgpu_utils {
                         },
                         count: None,
                     });
-                    count += 1;
                 }
-                BufferWrapper::StagingBuffer { .. } => {}
-                &&BufferWrapper::Uniform { .. } => {
+                &BufferWrapper::StagingBuffer { .. } => {}
+                &BufferWrapper::Uniform { binding, .. } => {
                     binding_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
-                        binding: count,
+                        binding,
                         visibility: ShaderStages::COMPUTE,
                         ty: BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform {},
@@ -148,7 +207,6 @@ pub mod wgpu_utils {
                         },
                         count: None,
                     });
-                    count += 1;
                 }
             }
         }

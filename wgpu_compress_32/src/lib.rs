@@ -6,7 +6,7 @@ use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{get_buffer_size, Padding};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::wgpu_utils::WgpuUtilsError;
-use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper};
+use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
 use general_utils::add_padding_to_fit_buffer_count;
 use log::info;
 use pollster::FutureExt;
@@ -87,6 +87,7 @@ impl ChimpCompressor {
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(padded_values.as_slice()),
+            WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
         let s_staging_buffer =
@@ -94,6 +95,7 @@ impl ChimpCompressor {
         let s_storage_buffer = BufferWrapper::storage_with_size(
             self.device(),
             s_buffer_size,
+            WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
 
@@ -181,17 +183,20 @@ impl ChimpCompressor {
         let output_storage_buffer = BufferWrapper::storage_with_size(
             self.device(),
             output_buffer_size,
+            WgpuGroupId::new(0, 2),
             Some("Storage Output Buffer"),
         );
         let s_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(s_values.as_slice()),
+            WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
         input.push(0f32);
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(input.as_slice()),
+            WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
 
