@@ -24,6 +24,25 @@ pub enum FinalizerEnum {
     CPU,
 }
 #[derive(Debug)]
+pub enum FinalizerImpl<'a> {
+    GPU(Finalizer<'a>),
+    CPU(CPUImpl),
+}
+
+#[async_trait]
+impl Finalize for FinalizerImpl<'_> {
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput>,
+        padding: usize,
+    ) -> Result<Vec<u8>> {
+        match self {
+            FinalizerImpl::GPU(impll) => impll.finalize(chimp_output, padding).await,
+            FinalizerImpl::CPU(impll) => impll.finalize(chimp_output, padding).await,
+        }
+    }
+}
+#[derive(Debug)]
 pub struct ChimpCompressorBatched {
     debug: bool,
     context: Context,
@@ -119,10 +138,10 @@ impl ChimpCompressorBatched {
     fn compute_final_compress_factory(&self) -> impl FinalCompress + use<'_> {
         FinalCompressImpl::new(self.context(), self.debug())
     }
-    fn compute_finalize_factory<'a>(&'a self) -> Box<dyn Finalize + Send + 'a> {
+    fn compute_finalize_factory(&self) -> impl Finalize + use<'_> {
         match self.finalizer {
-            FinalizerEnum::GPU => Box::new(Finalizer::new(self.context())),
-            FinalizerEnum::CPU => Box::new(CPUImpl::default()),
+            FinalizerEnum::GPU => FinalizerImpl::GPU(Finalizer::new(self.context())),
+            FinalizerEnum::CPU => FinalizerImpl::CPU(CPUImpl::default()),
         }
     }
 }

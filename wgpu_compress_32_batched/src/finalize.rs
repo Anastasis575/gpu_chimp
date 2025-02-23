@@ -12,7 +12,7 @@ use std::{fs, vec};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-pub(crate) trait Finalize {
+pub trait Finalize {
     async fn finalize(
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
@@ -20,7 +20,8 @@ pub(crate) trait Finalize {
     ) -> Result<Vec<u8>>;
 }
 
-pub(crate) struct Finalizer<'a> {
+#[derive(Debug)]
+pub struct Finalizer<'a> {
     context: &'a Context,
 }
 
