@@ -476,6 +476,7 @@ pub mod general_utils {
         ComputeS,
         Compress,
         Finalize,
+        Decompress,
     }
     impl Step {
         pub fn get_trace_file(&self) -> PathBuf {
@@ -498,6 +499,13 @@ pub mod general_utils {
                     fs::create_dir_all("./traces/finalize/").unwrap();
                     PathBuf::from(format!(
                         "./traces/finalize/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
+                }
+                Step::Decompress => {
+                    fs::create_dir_all("./traces/decompress/").unwrap();
+                    PathBuf::from(format!(
+                        "./traces/decompress/trace_{}.log",
                         chrono::Local::now().to_utc()
                     ))
                 }
