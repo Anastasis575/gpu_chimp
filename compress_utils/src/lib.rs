@@ -150,6 +150,7 @@ pub mod wgpu_utils {
     use anyhow::Result;
     use bytemuck::Pod;
     use thiserror::Error;
+    use wgpu::naga::ShaderStage::Compute;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
@@ -167,17 +168,36 @@ pub mod wgpu_utils {
         }
     }
 
-    /// Utility function to create a wgsl compute shader module to use in our pipeline from code defined in [shader_content]  
-    pub fn create_shader_module(device: &Device, shader_content: &str) -> Result<ShaderModule> {
+    pub enum ShaderType {
+        WGSL,
+        GLSL,
+    }
+
+    /// Utility function to create a wgsl compute shader module to use in our pipeline from code defined in [shader_content]
+    pub fn create_shader_module(
+        device: &Device,
+        shader_content: &str,
+        stype: ShaderType,
+    ) -> Result<ShaderModule> {
+        let binding = vec![("shaderFloat64", "VK_TRUE"), ("shaderInt64", "VK_TRUE")];
         let cs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_content)),
+            source: match stype {
+                ShaderType::WGSL => {
+                    wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(shader_content))
+                }
+                ShaderType::GLSL => wgpu::ShaderSource::Glsl {
+                    shader: std::borrow::Cow::Borrowed(shader_content),
+                    defines: binding.as_slice(),
+                    stage: Compute,
+                },
+            },
         });
         Ok(cs_module)
     }
 
     /// Utility function to create a bind group layout based on defined wrappers
-    ///     
+    ///
     /// Bind groups define which
     pub fn assign_bind_groups(device: &Device, bindings: Vec<&BufferWrapper>) -> BindGroupLayout {
         let mut binding_group_layout_entries = Vec::<wgpu::BindGroupLayoutEntry>::new();
@@ -252,10 +272,8 @@ pub mod wgpu_utils {
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) = flume::bounded(1);
         buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-        context
-            .device()
-            .poll(wgpu::Maintain::wait())
-            .panic_on_timeout();
+        let _ = context.device().poll(wgpu::PollType::Wait)?.wait_finished();
+
         receiver.recv_async().await??;
         let output: Vec<T> =
             bytemuck::cast_slice(buffer_slice.get_mapped_range()[..].iter().as_slice()).to_vec();
@@ -353,6 +371,8 @@ pub mod bit_utils {
     pub trait BitReadable {
         fn reinterpret_u32(&self, index: usize, offset: usize) -> u32;
         fn reinterpret_i32(&self, index: usize, offset: usize) -> i32;
+        fn reinterpret_u64(&self, index: usize, offset: usize) -> u64;
+        fn reinterpret_i64(&self, index: usize, offset: usize) -> i64;
     }
     impl BitReadable for BitVec {
         fn reinterpret_u32(&self, index: usize, offset: usize) -> u32 {
@@ -368,6 +388,22 @@ pub mod bit_utils {
             for i in index..index + offset {
                 output <<= 1;
                 output += self[i] as i32;
+            }
+            output
+        }
+        fn reinterpret_u64(&self, index: usize, offset: usize) -> u64 {
+            let mut output = 0u64;
+            for i in index..index + offset {
+                output <<= 1;
+                output += self[i] as u64;
+            }
+            output
+        }
+        fn reinterpret_i64(&self, index: usize, offset: usize) -> i64 {
+            let mut output = 0i64;
+            for i in index..index + offset {
+                output <<= 1;
+                output += self[i] as i64;
             }
             output
         }
@@ -393,7 +429,7 @@ pub mod general_utils {
     pub struct Padding(pub usize);
 
     /// Add 0s to the end of [values] to be able to seemlessly
-    pub fn add_padding_to_fit_buffer_count(
+    pub fn add_padding_to_fit_buffer_count_f32(
         mut values: Vec<f32>,
         buffer_size: usize,
         padding: &mut Padding,
@@ -403,6 +439,21 @@ pub mod general_utils {
             padding.0 = count;
             for _i in 0..count {
                 values.push(0f32);
+            }
+        }
+        values
+    }
+    /// Add 0s to the end of [values] to be able to seemlessly
+    pub fn add_padding_to_fit_buffer_count_f64(
+        mut values: Vec<f64>,
+        buffer_size: usize,
+        padding: &mut Padding,
+    ) -> Vec<f64> {
+        if values.len() % buffer_size != 0 {
+            let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
+            padding.0 = count;
+            for _i in 0..count {
+                values.push(0f64);
             }
         }
         values

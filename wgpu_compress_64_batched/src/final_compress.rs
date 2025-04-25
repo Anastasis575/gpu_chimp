@@ -1,8 +1,8 @@
+use crate::final_compress::wgpu_utils::ShaderType::WGSL;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput, S};
-use compress_utils::wgpu_utils::ShaderType::WGSL;
 use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
@@ -14,18 +14,18 @@ use wgpu_types::BufferAddress;
 pub trait FinalCompress: MaxGroupGnostic {
     async fn final_compress(
         &self,
-        input: &mut Vec<f32>,
+        input: &mut Vec<f64>,
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> anyhow::Result<Vec<ChimpOutput>>;
 }
 
-pub struct FinalCompressImpl<'a> {
+pub struct FinalCompressImpl64<'a> {
     context: &'a Context,
     // debug: bool,
 }
 
-impl<'a> FinalCompressImpl<'a> {
+impl<'a> FinalCompressImpl64<'a> {
     pub fn new(context: &'a Context, debug: bool) -> Self {
         Self {
             context,
@@ -48,17 +48,17 @@ impl<'a> FinalCompressImpl<'a> {
     }
 }
 
-impl MaxGroupGnostic for FinalCompressImpl<'_> {
+impl MaxGroupGnostic for FinalCompressImpl64<'_> {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(get_buffer_size())
     }
 }
 
 #[async_trait]
-impl<'a> FinalCompress for FinalCompressImpl<'_> {
+impl<'a> FinalCompress for FinalCompressImpl64<'_> {
     async fn final_compress(
         &self,
-        input: &mut Vec<f32>,
+        input: &mut Vec<f64>,
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> anyhow::Result<Vec<ChimpOutput>> {
@@ -97,7 +97,7 @@ impl<'a> FinalCompress for FinalCompressImpl<'_> {
             WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
-        input.push(0f32);
+        input.push(0f64);
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(input.as_slice()),

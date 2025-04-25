@@ -1,0 +1,18 @@
+[package]
+name = "wgpu_compress_64_batched"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+compress_utils = { path = "../compress_utils" }
+anyhow = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+bytemuck = { version = "1.21.0", features = ["derive"] }
+wgpu = { workspace = true }
+wgpu-types = { workspace = true }
+bit-vec = { workspace = true }
+async-trait = { workspace = true }
+pollster = "0.4.0"
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+thiserror = { workspace = true }

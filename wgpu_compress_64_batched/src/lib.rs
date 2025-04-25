@@ -4,17 +4,17 @@ mod decompressor;
 mod final_compress;
 mod finalize;
 
-use crate::compute_s_shader::{ComputeS, ComputeSImpl};
+use crate::compute_s_shader::{ComputeS, ComputeSImpl64};
 use crate::cpu::finalize::CPUImpl;
-use crate::final_compress::{FinalCompress, FinalCompressImpl};
+use crate::final_compress::{FinalCompress, FinalCompressImpl64};
 use crate::finalize::{Finalize, Finalizer};
 use anyhow::Result;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
-use compress_utils::cpu_compress::{CompressionError, Compressor};
+use compress_utils::cpu_compress::{CompressionError, Compressor, Compressor64};
 use compress_utils::general_utils::{
-    add_padding_to_fit_buffer_count_f32, get_buffer_size, Padding,
+    add_padding_to_fit_buffer_count_f64, get_buffer_size, Padding,
 };
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
@@ -63,12 +63,12 @@ impl Default for ChimpCompressorBatched {
 }
 
 #[async_trait]
-impl Compressor for ChimpCompressorBatched {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
+impl Compressor64 for ChimpCompressorBatched {
+    async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
         let mut values = vec.to_owned();
-        values = add_padding_to_fit_buffer_count_f32(values, buffer_size, &mut padding);
+        values = add_padding_to_fit_buffer_count_f64(values, buffer_size, &mut padding);
         let mut total_millis = 0;
         let mut s_values: Vec<S>;
         let mut chimp_vec: Vec<ChimpOutput>;
@@ -137,10 +137,10 @@ impl ChimpCompressorBatched {
         self.debug = debug;
     }
     fn compute_s_factory(&self) -> impl ComputeS + use<'_> {
-        ComputeSImpl::new(self.context())
+        ComputeSImpl64::new(self.context())
     }
     fn compute_final_compress_factory(&self) -> impl FinalCompress + use<'_> {
-        FinalCompressImpl::new(self.context(), self.debug())
+        FinalCompressImpl64::new(self.context(), self.debug())
     }
     fn compute_finalize_factory(&self) -> impl Finalize + use<'_> {
         match self.finalizer {
@@ -155,9 +155,9 @@ mod tests {
     use crate::cpu::decompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
-    use compress_utils::cpu_compress::{Compressor, Decompressor};
+    use compress_utils::cpu_compress::{Compressor, Compressor64, Decompressor, Decompressor64};
     use compress_utils::general_utils::check_for_debug_mode;
-    use decompressor::BatchedDecompressorCpu;
+    use decompressor::BatchedDecompressorCpu64;
     use itertools::Itertools;
     use pollster::FutureExt;
     use std::{env, fs};
@@ -171,7 +171,7 @@ mod tests {
             .map(|it| it.to_string())
     }
     //noinspection ALL
-    fn get_values() -> anyhow::Result<Vec<f32>> {
+    fn get_values() -> anyhow::Result<Vec<f64>> {
         let dir = env::current_dir()?;
         let file_path = dir.parent().unwrap().join("city_temperature.csv");
         let file_txt = fs::read_to_string(file_path)?;
@@ -179,7 +179,7 @@ mod tests {
             .split("\n")
             .map(get_third)
             .filter(|p| p.is_some())
-            .map(|s| s.unwrap().parse::<f32>().unwrap())
+            .map(|s| s.unwrap().parse::<f64>().unwrap())
             .collect_vec()
             .to_vec();
         Ok(values)
@@ -191,7 +191,7 @@ mod tests {
 
         let subscriber = tracing_subscriber::fmt()
             .compact()
-            .with_env_filter("wgpu_compress_32=info")
+            .with_env_filter("wgpu_compress_64=info")
             // .with_writer(
             //     OpenOptions::new()
             //         .create(true)
@@ -225,11 +225,11 @@ mod tests {
     }
     //noinspection DuplicatedCode
     #[test]
-    fn test_decompress_able() {
+    fn test_decompress_able_64() {
         // let value_count = 0..(256 * 109);
         let subscriber = tracing_subscriber::fmt()
             .compact()
-            .with_env_filter("wgpu_compress_32=info")
+            .with_env_filter("wgpu_compress_64=info")
             // .with_writer(
             //     OpenOptions::new()
             //         .create(true)
@@ -255,7 +255,7 @@ mod tests {
 
         // assert_eq!(compressed_values2, compressed_values3);
 
-        let decompressor = BatchedDecompressorCpu::default();
+        let decompressor = BatchedDecompressorCpu64::default();
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
                 // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();

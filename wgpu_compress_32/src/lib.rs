@@ -1,3 +1,4 @@
+use crate::wgpu_utils::ShaderType::WGSL;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::bit_utils::{to_bit_vec, BitError};
@@ -7,7 +8,7 @@ use compress_utils::general_utils::{get_buffer_size, Padding};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::wgpu_utils::WgpuUtilsError;
 use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
-use general_utils::add_padding_to_fit_buffer_count;
+use general_utils::add_padding_to_fit_buffer_count_f32;
 use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
@@ -68,7 +69,7 @@ impl ChimpCompressor {
         let temp = include_str!("shaders/compute_s.wgsl")
             .replace("#@workgroup_size(1)#", &workgroup_size)
             .to_string();
-        let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp)?;
+        let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp, WGSL)?;
 
         //Calculating buffer sizes and workgroup counts
 
@@ -161,7 +162,7 @@ impl ChimpCompressor {
         let temp = include_str!("shaders/chimp_compress.wgsl")
             .replace("#@workgroup_size(1)#", &workgroup_size)
             .to_string();
-        let final_compress_module = wgpu_utils::create_shader_module(self.device(), &temp)?;
+        let final_compress_module = wgpu_utils::create_shader_module(self.device(), &temp, WGSL)?;
         let size_of_s = size_of::<S>();
         let size_of_output = size_of::<ChimpOutput>();
         let input_length = input.len();
@@ -279,7 +280,7 @@ impl Compressor for ChimpCompressor {
         let buffer_size = get_buffer_size();
 
         let mut values = initial_values.to_owned();
-        values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
+        values = add_padding_to_fit_buffer_count_f32(values, buffer_size, &mut padding);
 
         let mut total_millis = 0;
         let mut s_values: Vec<S>;

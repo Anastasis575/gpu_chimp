@@ -1,9 +1,9 @@
+use crate::finalize::wgpu_utils::ShaderType::WGSL;
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::ChimpOutput;
-use compress_utils::wgpu_utils::ShaderType::WGSL;
 use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;

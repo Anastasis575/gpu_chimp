@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::S;
-use compress_utils::wgpu_utils::ShaderType::WGSL;
+use compress_utils::wgpu_utils::ShaderType::GLSL;
 use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
@@ -13,14 +13,14 @@ use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait ComputeS: MaxGroupGnostic {
-    async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>>;
+    async fn compute_s(&self, values: &mut [f64]) -> Result<Vec<S>>;
 }
 
-pub struct ComputeSImpl<'a> {
+pub struct ComputeSImpl64<'a> {
     context: &'a Context,
 }
 
-impl<'a> ComputeSImpl<'a> {
+impl<'a> ComputeSImpl64<'a> {
     pub fn new(context: &'a Context) -> Self {
         Self { context }
     }
@@ -42,23 +42,23 @@ impl<'a> ComputeSImpl<'a> {
     }
 }
 
-impl MaxGroupGnostic for ComputeSImpl<'_> {
+impl MaxGroupGnostic for ComputeSImpl64<'_> {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(get_buffer_size())
     }
 }
 
 #[async_trait]
-impl ComputeS for ComputeSImpl<'_> {
-    async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
+impl ComputeS for ComputeSImpl64<'_> {
+    async fn compute_s(&self, values: &mut [f64]) -> Result<Vec<S>> {
         // Create shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );
 
-        let temp = include_str!("shaders/compute_s.wgsl")
+        let temp = include_str!("shaders/compute_s.glsl")
             .replace("@@workgroup_size", &get_buffer_size().to_string())
             .replace("@@start_index", "0u")
             .to_string();
-        let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp, WGSL)?;
+        let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp, GLSL)?;
 
         //Calculating buffer sizes and workgroup counts
         let workgroup_count = self.get_max_number_of_groups(values.len());
@@ -72,7 +72,7 @@ impl ComputeS for ComputeSImpl<'_> {
         info!("The S buffer size in bytes: {}", s_buffer_size);
 
         let mut padded_values = Vec::from(values);
-        padded_values.push(0f32);
+        padded_values.push(0f64);
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(padded_values.as_slice()),

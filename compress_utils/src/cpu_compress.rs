@@ -50,6 +50,15 @@ pub trait Decompressor {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError>;
 }
 #[async_trait]
+pub trait Compressor64 {
+    async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError>;
+}
+
+#[async_trait]
+pub trait Decompressor64 {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError>;
+}
+#[async_trait]
 impl Compressor for CPUCompressor {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut bit_vec = to_bit_vec(vec[0].to_bits());
