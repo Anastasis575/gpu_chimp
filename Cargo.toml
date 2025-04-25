@@ -3,24 +3,25 @@ members = [
     "compress_utils",
     "wgpu_compress_32",
     "wgpu_compress_32_batched",
+    "wgpu_compress_64_batched",
     "compressapi"
 ]
 resolver = "2"
 
 [workspace.dependencies]
-wgpu = { version = "24.0.0", default-features = false, features = [
+wgpu = { version = "25.0.0", default-features = false, features = [
     "wgsl",
-    "dx12",
-    "replay"
+    "glsl",
+    "vulkan",
 ] }
-wgpu-types = "24.0.0"
-async-trait = "0.1.83"
+wgpu-types = "25.0.0"
+async-trait = "0.1.88"
 bit-vec = "0.8.0"
-anyhow = "1.0.93"
+anyhow = "1.0.98"
 itertools = "0.14.0"
-log = "0.4.22"
+log = "0.4.27"
 dotenv = "0.15.0"
 tracing-subscriber = { version = "0.3.19", features = ["tracing-log"] }
 tracing = "0.1.41"
-chrono = "0.4.39"
-thiserror = "2.0.9"
+chrono = "0.4.40"
+thiserror = "2.0.12"
