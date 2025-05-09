@@ -1,5 +1,6 @@
 mod compute_s_shader;
 mod cpu;
+mod decompressor;
 mod final_compress;
 mod finalize;
 
@@ -17,6 +18,7 @@ use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
 use log::info;
 use pollster::FutureExt;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum FinalizerEnum {
@@ -45,14 +47,14 @@ impl Finalize for FinalizerImpl<'_> {
 #[derive(Debug)]
 pub struct ChimpCompressorBatched {
     debug: bool,
-    context: Context,
+    context: Arc<Context>,
     finalizer: FinalizerEnum,
 }
 impl Default for ChimpCompressorBatched {
     fn default() -> Self {
         Self {
             debug: false,
-            context: Context::initialize_default_adapter().block_on().unwrap(),
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
             finalizer: FinalizerEnum::GPU,
         }
     }
@@ -108,7 +110,7 @@ impl Compressor for ChimpCompressorBatched {
 }
 
 impl ChimpCompressorBatched {
-    pub fn new(debug: bool, context: Context, finalizer: FinalizerEnum) -> Self {
+    pub fn new(debug: bool, context: Arc<Context>, finalizer: FinalizerEnum) -> Self {
         Self {
             debug,
             context,
@@ -121,8 +123,8 @@ impl ChimpCompressorBatched {
     pub fn queue(&self) -> &wgpu::Queue {
         self.context.queue()
     }
-    pub fn context(&self) -> &Context {
-        &self.context
+    pub fn context_a(&self) -> Arc<Context> {
+        self.context.clone()
     }
 
     pub fn debug(&self) -> bool {
@@ -133,29 +135,34 @@ impl ChimpCompressorBatched {
         self.debug = debug;
     }
     fn compute_s_factory(&self) -> impl ComputeS + use<'_> {
-        ComputeSImpl::new(self.context())
+        ComputeSImpl::new(self.context_a())
     }
     fn compute_final_compress_factory(&self) -> impl FinalCompress + use<'_> {
-        FinalCompressImpl::new(self.context(), self.debug())
+        FinalCompressImpl::new(self.context_a(), self.debug())
     }
     fn compute_finalize_factory(&self) -> impl Finalize + use<'_> {
         match self.finalizer {
-            FinalizerEnum::GPU => FinalizerImpl::GPU(Finalizer::new(self.context())),
+            FinalizerEnum::GPU => FinalizerImpl::GPU(Finalizer::new(self.context_a())),
             FinalizerEnum::CPU => FinalizerImpl::CPU(CPUImpl::default()),
         }
     }
 }
 
+#[macro_export]
+macro_rules! time_it_compound {}
 #[cfg(test)]
 mod tests {
     use crate::cpu::decompressor;
+    use crate::decompressor::BatchedGPUDecompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
+    use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use decompressor::BatchedDecompressorCpu;
-    use itertools::Itertools;
+    use itertools::{concat, Itertools};
     use pollster::FutureExt;
+    use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -239,8 +246,14 @@ mod tests {
 
         let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
+        let context = Arc::new(
+            Context::initialize_with_adapter("NVIDIA".to_string())
+                .block_on()
+                .unwrap(),
+        );
         let mut compressor = ChimpCompressorBatched {
             finalizer: GPU,
+            context: context.clone(),
             ..ChimpCompressorBatched::default()
         };
         if check_for_debug_mode().expect("Could not read file system") {
@@ -251,7 +264,7 @@ mod tests {
 
         // assert_eq!(compressed_values2, compressed_values3);
 
-        let decompressor = BatchedDecompressorCpu::default();
+        let decompressor = BatchedGPUDecompressor::new(context);
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
                 // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();

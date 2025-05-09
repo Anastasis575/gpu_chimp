@@ -7,6 +7,7 @@ use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
+use std::sync::Arc;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -19,13 +20,13 @@ pub trait FinalCompress: MaxGroupGnostic {
     ) -> anyhow::Result<Vec<ChimpOutput>>;
 }
 
-pub struct FinalCompressImpl<'a> {
-    context: &'a Context,
+pub struct FinalCompressImpl {
+    context: Arc<Context>,
     // debug: bool,
 }
 
-impl<'a> FinalCompressImpl<'a> {
-    pub fn new(context: &'a Context, debug: bool) -> Self {
+impl FinalCompressImpl {
+    pub fn new(context: Arc<Context>, debug: bool) -> Self {
         Self {
             context,
             // debug
@@ -33,7 +34,7 @@ impl<'a> FinalCompressImpl<'a> {
     }
 
     pub fn context(&self) -> &Context {
-        self.context
+        self.context.as_ref()
     }
 
     // pub fn debug(&self) -> bool {
@@ -47,14 +48,14 @@ impl<'a> FinalCompressImpl<'a> {
     }
 }
 
-impl MaxGroupGnostic for FinalCompressImpl<'_> {
+impl MaxGroupGnostic for FinalCompressImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(get_buffer_size())
     }
 }
 
 #[async_trait]
-impl<'a> FinalCompress for FinalCompressImpl<'_> {
+impl FinalCompress for FinalCompressImpl {
     async fn final_compress(
         &self,
         input: &mut Vec<f32>,

@@ -151,6 +151,7 @@ pub mod wgpu_utils {
     use bytemuck::Pod;
     use thiserror::Error;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
+    use wgpu_types::PollType::Wait;
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
     /// Utility error description
@@ -252,10 +253,7 @@ pub mod wgpu_utils {
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) = flume::bounded(1);
         buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-        context
-            .device()
-            .poll(wgpu::Maintain::wait())
-            .panic_on_timeout();
+        let result = context.device().poll(Wait)?.wait_finished();
         receiver.recv_async().await??;
         let output: Vec<T> =
             bytemuck::cast_slice(buffer_slice.get_mapped_range()[..].iter().as_slice()).to_vec();

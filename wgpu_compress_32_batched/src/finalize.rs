@@ -8,6 +8,7 @@ use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
 use std::ops::Div;
+use std::sync::Arc;
 use std::{fs, vec};
 use wgpu_types::BufferAddress;
 
@@ -21,17 +22,17 @@ pub trait Finalize {
 }
 
 #[derive(Debug)]
-pub struct Finalizer<'a> {
-    context: &'a Context,
+pub struct Finalizer {
+    context: Arc<Context>,
 }
 
-impl<'a> Finalizer<'a> {
-    pub fn new(context: &'a Context) -> Self {
+impl Finalizer {
+    pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
 
-    pub fn context(&self) -> &'a Context {
-        self.context
+    pub fn context(&self) -> &Context {
+        self.context.as_ref()
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -44,7 +45,7 @@ impl<'a> Finalizer<'a> {
 }
 
 #[async_trait]
-impl<'a> Finalize for Finalizer<'a> {
+impl Finalize for Finalizer {
     async fn finalize(
         &self,
         chimp_input: &mut Vec<ChimpOutput>,

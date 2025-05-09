@@ -8,6 +8,7 @@ use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
+use std::sync::Arc;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -15,17 +16,17 @@ pub trait ComputeS: MaxGroupGnostic {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>>;
 }
 
-pub struct ComputeSImpl<'a> {
-    context: &'a Context,
+pub struct ComputeSImpl {
+    context: Arc<Context>,
 }
 
-impl<'a> ComputeSImpl<'a> {
-    pub fn new(context: &'a Context) -> Self {
+impl ComputeSImpl {
+    pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
 
     pub fn context(&self) -> &Context {
-        self.context
+        self.context.as_ref()
     }
     pub fn device(&self) -> &wgpu::Device {
         self.context.device()
@@ -41,16 +42,16 @@ impl<'a> ComputeSImpl<'a> {
     }
 }
 
-impl MaxGroupGnostic for ComputeSImpl<'_> {
+impl MaxGroupGnostic for ComputeSImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(get_buffer_size())
     }
 }
 
 #[async_trait]
-impl ComputeS for ComputeSImpl<'_> {
+impl ComputeS for ComputeSImpl {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
-        // Create shader module and pipeline
+        // Create a shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );
 
         let temp = include_str!("shaders/compute_s.wgsl")

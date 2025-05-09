@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use thiserror::Error;
 use wgpu::{Adapter, Device, Queue, RequestDeviceError};
+use wgpu_types::Trace::Off;
 
 #[derive(Debug)]
 pub struct Context {
@@ -78,19 +79,17 @@ impl Context {
             instance
                 .request_adapter(&wgpu::RequestAdapterOptionsBase::default())
                 .await
-                .ok_or(UtilError::Unintialized)?
+                .map_err(|_| UtilError::Unintialized)?
         };
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::default(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
-                    memory_hints: wgpu::MemoryHints::MemoryUsage,
-                },
-                None, //PLEASE ENABLE THE TRACE FEATURE,I NEED THIS
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::default(),
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
+                trace: Off,
+            })
             .await
             .map_err(|source| UtilError::UnbindableAdapter {
                 name: adapter.get_info().name.to_string(),
