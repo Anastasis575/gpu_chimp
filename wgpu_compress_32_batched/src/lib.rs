@@ -26,13 +26,13 @@ pub enum FinalizerEnum {
     CPU,
 }
 #[derive(Debug)]
-pub enum FinalizerImpl<'a> {
-    GPU(Finalizer<'a>),
+pub enum FinalizerImpl {
+    GPU(Finalizer),
     CPU(CPUImpl),
 }
 
 #[async_trait]
-impl Finalize for FinalizerImpl<'_> {
+impl Finalize for FinalizerImpl {
     async fn finalize(
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
@@ -134,7 +134,7 @@ impl ChimpCompressorBatched {
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
-    fn compute_s_factory(&self) -> impl ComputeS + use<'_> {
+    fn compute_s_factory(&self) -> impl ComputeS {
         ComputeSImpl::new(self.context_a())
     }
     fn compute_final_compress_factory(&self) -> impl FinalCompress + use<'_> {
@@ -147,20 +147,17 @@ impl ChimpCompressorBatched {
         }
     }
 }
-
-#[macro_export]
-macro_rules! time_it_compound {}
 #[cfg(test)]
 mod tests {
     use crate::cpu::decompressor;
+    use crate::cpu::decompressor::BatchedDecompressorCpu;
     use crate::decompressor::BatchedGPUDecompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
     use compress_utils::context::Context;
-    use compress_utils::cpu_compress::{Compressor, Decompressor};
+    use compress_utils::cpu_compress::{CPUCompressor, Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
-    use decompressor::BatchedDecompressorCpu;
-    use itertools::{concat, Itertools};
+    use itertools::Itertools;
     use pollster::FutureExt;
     use std::sync::Arc;
     use std::{env, fs};
@@ -264,7 +261,7 @@ mod tests {
 
         // assert_eq!(compressed_values2, compressed_values3);
 
-        let decompressor = BatchedGPUDecompressor::new(context);
+        let decompressor = BatchedDecompressorCpu::default();
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
                 // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();

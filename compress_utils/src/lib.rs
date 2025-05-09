@@ -438,6 +438,35 @@ pub mod general_utils {
         info!("============================");
         }
     }
+    #[macro_export]
+    macro_rules! execute_compute_shader {
+        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr) => {
+            let compute_shader_module =
+                wgpu_utils::create_shader_module($context.device(), $shader_source)?;
+            let binding_group_layout = wgpu_utils::assign_bind_groups($context.device(), $buffers);
+            let compute_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
+                $context.device(),
+                &compute_shader_module,
+                &binding_group_layout,
+                Some("Compute s pipeline"),
+            )?;
+            let binding_group =
+                wgpu_utils::create_bind_group($context, &binding_group_layout, $buffers);
+            let mut s_encoder = $context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            {
+                let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("s_pass"),
+                    timestamp_writes: None,
+                });
+                s_pass.set_pipeline(&compute_s_pipeline);
+                s_pass.set_bind_group(0, &binding_group, &[]);
+                s_pass.dispatch_workgroups(max($dispatch_size, 1) as u32, 1, 1)
+            }
+            $context.queue().submit(Some(s_encoder.finish()));
+        };
+    }
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
         let debug = false;
