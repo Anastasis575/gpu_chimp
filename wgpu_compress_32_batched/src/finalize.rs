@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::ChimpOutput;
-use compress_utils::wgpu_utils::ShaderType::WGSL;
-use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
 use std::ops::Div;
+use std::sync::Arc;
 use std::{fs, vec};
 use wgpu_types::BufferAddress;
 
@@ -22,17 +22,17 @@ pub trait Finalize {
 }
 
 #[derive(Debug)]
-pub struct Finalizer<'a> {
-    context: &'a Context,
+pub struct Finalizer {
+    context: Arc<Context>,
 }
 
-impl<'a> Finalizer<'a> {
-    pub fn new(context: &'a Context) -> Self {
+impl Finalizer {
+    pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
 
-    pub fn context(&self) -> &'a Context {
-        self.context
+    pub fn context(&self) -> &Context {
+        self.context.as_ref()
     }
 
     pub fn device(&self) -> &wgpu::Device {
@@ -45,14 +45,13 @@ impl<'a> Finalizer<'a> {
 }
 
 #[async_trait]
-impl<'a> Finalize for Finalizer<'a> {
+impl Finalize for Finalizer {
     async fn finalize(
         &self,
         chimp_input: &mut Vec<ChimpOutput>,
         padding: usize,
     ) -> Result<Vec<u8>> {
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
-        let final_compress_module = wgpu_utils::create_shader_module(self.device(), &temp, WGSL)?;
         // let size_of_chimp = size_of::<ChimpOutput>();
         let size_of_out = size_of::<u32>();
 
@@ -101,27 +100,9 @@ impl<'a> Finalize for Finalizer<'a> {
             (workgroup_count * size_of::<u32>()) as BufferAddress,
             Some("Useful Staging Buffer"),
         );
-
-        let binding_group_layout = wgpu_utils::assign_bind_groups(
-            self.device(),
-            vec![
-                &out_stage_buffer,
-                &out_storage_buffer,
-                &in_storage_buffer,
-                &size_uniform,
-                &useful_byte_count_storage,
-                &useful_byte_count_staging,
-            ],
-        );
-        let improve_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
-            self.device(),
-            &final_compress_module,
-            &binding_group_layout,
-            Some("Compress pipeline"),
-        )?;
-        let binding_group = wgpu_utils::create_bind_group(
+        execute_compute_shader!(
             self.context(),
-            &binding_group_layout,
+            &temp,
             vec![
                 &out_stage_buffer,
                 &out_storage_buffer,
@@ -130,22 +111,8 @@ impl<'a> Finalize for Finalizer<'a> {
                 &useful_byte_count_storage,
                 &useful_byte_count_staging,
             ],
+            workgroup_count
         );
-        let mut s_encoder = self
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-        {
-            let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("compress_pass"),
-                timestamp_writes: None,
-            });
-            s_pass.set_pipeline(&improve_s_pipeline);
-            s_pass.set_bind_group(0, &binding_group, &[]);
-            s_pass.dispatch_workgroups(max(workgroup_count, 1) as u32, 1, 1)
-        }
-
-        self.queue().submit(Some(s_encoder.finish()));
 
         let output = wgpu_utils::get_s_output::<u32>(
             self.context(),

@@ -8,13 +8,11 @@ compress_utils = { path = "../compress_utils" }
 anyhow = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
-bytemuck = { version = "1.21.0", features = ["derive"] }
+bytemuck = { version = "1.23.0", features = ["derive"] }
 wgpu = { workspace = true }
 wgpu-types = { workspace = true }
 bit-vec = { workspace = true }
 async-trait = { workspace = true }
 pollster = "0.4.0"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tracing = "0.1.41"
 thiserror = { workspace = true }
-indicatif = "0.17.9"

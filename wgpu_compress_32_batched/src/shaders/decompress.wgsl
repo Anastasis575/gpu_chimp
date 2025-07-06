@@ -15,57 +15,75 @@ var<uniform> size: u32;
 
 @group(0)
 @binding(3)
-var<uniform> in_size: u32;
+var<storage, read_write> input_index: array<u32>;
 
-fn write(idx:u32){
-    var current_index=idx+1u;
+
+struct CurrentInfo{
+    current_index:u32,
+    current_offset:u32,
+}
+
+fn write(input_buffer_size:u32,input_idx:u32,output_idx:u32){
+    //Index of the byte we are in
+    var current_index=input_idx+1u;
+    //Current Remaining offset
     var current_offset=0u;
+    
+    var current_info=CurrentInfo(current_index,current_offset);
 
-    var first_num=reinterpret_num(current_index,32);
+    var first_num=reinterpret_num(current_info.current_index - 1u,32u,32u);
     var last_num:u32=first_num;
     var last_lead=0u;
+    var significant_bits=0u;
     
-    var output_index=0u;
+    var output_index=output_idx;
     
     out[output_index]=bitcast<f32>(first_num);
-    current_index+=32u;
-    for (var i: u32 = idx+1u; i < idx+size; i++) {
-        if current_index==in_size - 1u && current_offset + 1u >= 32u{
+    output_index+=1u;
+    current_info.current_offset+=32u;
+    // current_info.current_index+=1;
+    var value=0u;
+    for (var i: u32 = 1u; i < size; i++) {
+        // if we have not finished reading values from the uncompressed buffers
+        if current_info.current_index==input_buffer_size - 1u && current_info.current_offset + 1u >= 32u{
             break;
         }
-        if get_bit_at_index(current_index,current_offset)==1 {
-            input_index += 1u;
+        
+        //if current bit value==1
+        if get_bit_at_index(current_info.current_index,current_info.current_offset)==1 {
+            current_info=decr_counter_capped_at_32(&current_info,1u);
             var lead = last_lead;
-            if  get_bit_at_index(current_index,current_offset)==1 {
-                input_index += 1u;
-                lead = reinterpret_u32(input_index, 5u);
-                input_index += 5u;
+            if  get_bit_at_index(current_info.current_index,current_info.current_offset)==1 {
+                current_info=decr_counter_capped_at_32(&current_info,1u);
+                lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
+                current_info=decr_counter_capped_at_32(&current_info,5u);
             } else {
-                input_index += 1u;
+                current_info=decr_counter_capped_at_32(&current_info,1u);
             }
-            let significant_bits = 32u - lead;
+            significant_bits = 32u - lead;
             if significant_bits == 0u {
                 significant_bits = 32u;
             }
-            let value = reinterpret_u32(input_index, u32(significant_bits));
-            input_index += u32(32u - lead);
-            let value = value ^ last_num;
+            value = reinterpret_num(current_info.current_index,current_info.current_offset, u32(significant_bits));
+            current_info=decr_counter_capped_at_32(&current_info,u32(32u - lead));
+            value = value ^ last_num;
             last_num = value;
             last_lead = lead;
 
             out[output_index]=bitcast<f32>(value);
-        } else if  get_bit_at_index(input_index + 1u,current_offset)==1u{
-            input_index += 2u;
-            let lead = reinterpret_u32(input_vectorinput_index, 5u);
-            input_index += 5u;
-            var significant_bits = reinterpret_u32(input_vectorinput_index, 5u);
-            input_index += 5u;
+            output_index+=1u;
+        } else if  get_bit_at_index(current_info.current_index + 1u,current_info.current_offset)==1u{
+            current_info=decr_counter_capped_at_32(&current_info,2u);
+            let lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
+            current_info=decr_counter_capped_at_32(&current_info,5u);
+            var significant_bits = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
+            current_info=decr_counter_capped_at_32(&current_info,5u);
             if significant_bits == 0u {
                 significant_bits = 32u;
             }
             let trail = 32u - lead - significant_bits;
-            var value = reinterpret_u32(input_vectorinput_index, u32(32u - lead - trail));
-            input_index += u32(32u - lead - trail);
+            value = reinterpret_num(current_info.current_index,current_info.current_offset, u32(32u - lead - trail));
+            current_info=decr_counter_capped_at_32(&current_info,u32(32u - lead - trail));
             value <<= trail;
             value ^= last_num;
             last_lead = lead;
@@ -79,16 +97,38 @@ fn write(idx:u32){
             output_index+=1u;
 
             last_lead = 32u;
-            input_index += 2u;
+            current_info=decr_counter_capped_at_32(&current_info,2u);
         }
     }
 }
 
-fn get_bit_at_index(current_i:u32,offset:u32)->u32{
-    return extractBits(in[current_i],32u-offset - 1u,1u);
+
+fn get_bit_at_index(array_index: u32, position: u32) -> u32 {
+    return (in[array_index] >> position) & 1u;
 }
-fn reinterpret_num(index:u32,length:u32)->u32{
-    return extractBits(in,index,length);
+
+fn decr_counter_capped_at_32(value:ptr<function,CurrentInfo>,count:u32)->CurrentInfo{
+    let corrected_value=i32((*value).current_offset)-i32(count);
+    (*value).current_offset=u32(corrected_value>0)*u32(corrected_value) + u32(corrected_value<=0)*u32(32-corrected_value);
+    (*value).current_index+=u32(corrected_value<=0); //1 if it's true and 0 otherwise
+    return (*value);
+}
+
+fn reinterpret_num(array_index:u32,index:u32,length:u32)->u32{
+
+    if index >=length {
+        // Fully within one u32
+        return extractBits(in[array_index], index-length, length);
+    } else {
+        // Spans two u32 elements
+        let bits_in_first = index;
+        let bits_in_second = length - index;
+
+        let first_part = extractBits(in[array_index], 0u, bits_in_first);
+        let second_part = extractBits(in[array_index + 1], 32u-bits_in_second, bits_in_second);
+        return (second_part << bits_in_first) | first_part;
+    }
+   
 }
 
 
@@ -96,5 +136,6 @@ fn reinterpret_num(index:u32,length:u32)->u32{
 @compute
 @workgroup_size(1)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    write(global_id.x*size);
+    let input_buffer_size:u32=input_index[global_id.x]+u32(global_id.x==0)*input_index[max(global_id.x - 1u,0)];
+    write(input_buffer_size,input_index[global_id.x],global_id.x*size);
 }

@@ -3,12 +3,12 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::S;
-use compress_utils::wgpu_utils::ShaderType::WGSL;
 use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
+use std::sync::Arc;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -16,17 +16,17 @@ pub trait ComputeS: MaxGroupGnostic {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>>;
 }
 
-pub struct ComputeSImpl<'a> {
-    context: &'a Context,
+pub struct ComputeSImpl {
+    context: Arc<Context>,
 }
 
-impl<'a> ComputeSImpl<'a> {
-    pub fn new(context: &'a Context) -> Self {
+impl ComputeSImpl {
+    pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
 
     pub fn context(&self) -> &Context {
-        self.context
+        self.context.as_ref()
     }
     pub fn device(&self) -> &wgpu::Device {
         self.context.device()
@@ -42,23 +42,22 @@ impl<'a> ComputeSImpl<'a> {
     }
 }
 
-impl MaxGroupGnostic for ComputeSImpl<'_> {
+impl MaxGroupGnostic for ComputeSImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(get_buffer_size())
     }
 }
 
 #[async_trait]
-impl ComputeS for ComputeSImpl<'_> {
+impl ComputeS for ComputeSImpl {
     async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>> {
-        // Create shader module and pipeline
+        // Create a shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );
 
         let temp = include_str!("shaders/compute_s.wgsl")
             .replace("@@workgroup_size", &get_buffer_size().to_string())
             .replace("@@start_index", "0u")
             .to_string();
-        let compute_s_shader_module = wgpu_utils::create_shader_module(self.device(), &temp, WGSL)?;
 
         //Calculating buffer sizes and workgroup counts
         let workgroup_count = self.get_max_number_of_groups(values.len());
@@ -88,38 +87,12 @@ impl ComputeS for ComputeSImpl<'_> {
             Some("Storage S Buffer"),
         );
 
-        let binding_group_layout = wgpu_utils::assign_bind_groups(
-            self.device(),
-            vec![&s_storage_buffer, &input_storage_buffer, &s_staging_buffer],
-        );
-
-        let compute_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
-            self.device(),
-            &compute_s_shader_module,
-            &binding_group_layout,
-            Some("Compute s pipeline"),
-        )?;
-        let binding_group = wgpu_utils::create_bind_group(
+        execute_compute_shader!(
             self.context(),
-            &binding_group_layout,
+            &temp,
             vec![&s_storage_buffer, &input_storage_buffer, &s_staging_buffer],
+            workgroup_count
         );
-
-        let mut s_encoder = self
-            .device()
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-
-        {
-            let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("s_pass"),
-                timestamp_writes: None,
-            });
-            s_pass.set_pipeline(&compute_s_pipeline);
-            s_pass.set_bind_group(0, &binding_group, &[]);
-            s_pass.dispatch_workgroups(max(workgroup_count, 1) as u32, 1, 1)
-        }
-
-        self.queue().submit(Some(s_encoder.finish()));
 
         let output = wgpu_utils::get_s_output::<S>(
             self.context(),

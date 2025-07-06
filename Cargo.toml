@@ -3,7 +3,6 @@ members = [
     "compress_utils",
     "wgpu_compress_32",
     "wgpu_compress_32_batched",
-    "wgpu_compress_64_batched",
     "compressapi"
 ]
 resolver = "2"
@@ -23,5 +22,5 @@ log = "0.4.27"
 dotenv = "0.15.0"
 tracing-subscriber = { version = "0.3.19", features = ["tracing-log"] }
 tracing = "0.1.41"
-chrono = "0.4.40"
+chrono = "0.4.41"
 thiserror = "2.0.12"

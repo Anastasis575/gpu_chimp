@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use thiserror::Error;
 use wgpu::{Adapter, Device, Queue, RequestDeviceError};
-use wgpu_types::{Features, Trace};
 
 #[derive(Debug)]
 pub struct Context {
@@ -85,10 +84,10 @@ impl Context {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: Features::SHADER_F64 | Features::SHADER_INT64,
+                required_features: wgpu::Features::default(),
                 required_limits: wgpu::Limits::downlevel_defaults(),
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
-                trace: Trace::Off, //PLEASE JUST ENABLE THIS AGAIN
+                trace: Off,
             })
             .await
             .map_err(|source| UtilError::UnbindableAdapter {

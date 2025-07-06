@@ -152,6 +152,7 @@ pub mod wgpu_utils {
     use thiserror::Error;
     use wgpu::naga::ShaderStage::Compute;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
+    use wgpu_types::PollType::Wait;
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
     /// Utility error description
@@ -272,8 +273,7 @@ pub mod wgpu_utils {
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) = flume::bounded(1);
         buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-        let _ = context.device().poll(wgpu::PollType::Wait)?.wait_finished();
-
+        let result = context.device().poll(Wait)?.wait_finished();
         receiver.recv_async().await??;
         let output: Vec<T> =
             bytemuck::cast_slice(buffer_slice.get_mapped_range()[..].iter().as_slice()).to_vec();
@@ -490,6 +490,35 @@ pub mod general_utils {
         info!("============================");
         info!("============================");
         }
+    }
+    #[macro_export]
+    macro_rules! execute_compute_shader {
+        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr) => {
+            let compute_shader_module =
+                wgpu_utils::create_shader_module($context.device(), $shader_source)?;
+            let binding_group_layout = wgpu_utils::assign_bind_groups($context.device(), $buffers);
+            let compute_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
+                $context.device(),
+                &compute_shader_module,
+                &binding_group_layout,
+                Some("Compute s pipeline"),
+            )?;
+            let binding_group =
+                wgpu_utils::create_bind_group($context, &binding_group_layout, $buffers);
+            let mut s_encoder = $context
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            {
+                let mut s_pass = s_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("s_pass"),
+                    timestamp_writes: None,
+                });
+                s_pass.set_pipeline(&compute_s_pipeline);
+                s_pass.set_bind_group(0, &binding_group, &[]);
+                s_pass.dispatch_workgroups(max($dispatch_size, 1) as u32, 1, 1)
+            }
+            $context.queue().submit(Some(s_encoder.finish()));
+        };
     }
 
     pub fn check_for_debug_mode() -> anyhow::Result<bool> {
