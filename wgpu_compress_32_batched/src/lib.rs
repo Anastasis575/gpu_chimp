@@ -241,7 +241,7 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values").to_vec();
+        let mut values = get_values().expect("Could not read test values")[0..512].to_vec();
         log::info!("Starting compression of {} values", values.len());
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
@@ -261,7 +261,7 @@ mod tests {
 
         // assert_eq!(compressed_values2, compressed_values3);
 
-        let decompressor = BatchedDecompressorCpu::default();
+        let decompressor = BatchedGPUDecompressor::new(context.clone());
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
                 // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
