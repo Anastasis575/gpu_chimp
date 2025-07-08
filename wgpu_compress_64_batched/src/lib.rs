@@ -12,7 +12,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
-use compress_utils::cpu_compress::{CompressionError, Compressor, Compressor64};
+use compress_utils::cpu_compress::{CompressionError, Compressor64};
 use compress_utils::general_utils::{
     add_padding_to_fit_buffer_count_f64, get_buffer_size, Padding,
 };
@@ -20,6 +20,7 @@ use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
 use log::info;
 use pollster::FutureExt;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub enum FinalizerEnum {
@@ -48,7 +49,7 @@ impl Finalize for FinalizerImpl<'_> {
 #[derive(Debug)]
 pub struct ChimpCompressorBatched {
     debug: bool,
-    context: Context,
+    context: Arc<Context>,
     finalizer: FinalizerEnum,
 }
 
@@ -56,7 +57,7 @@ impl Default for ChimpCompressorBatched {
     fn default() -> Self {
         Self {
             debug: false,
-            context: Context::initialize_default_adapter().block_on().unwrap(),
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
             finalizer: FinalizerEnum::GPU,
         }
     }
@@ -112,7 +113,7 @@ impl Compressor64 for ChimpCompressorBatched {
 }
 
 impl ChimpCompressorBatched {
-    pub fn new(debug: bool, context: Context, finalizer: FinalizerEnum) -> Self {
+    pub fn new(debug: bool, context: Arc<Context>, finalizer: FinalizerEnum) -> Self {
         Self {
             debug,
             context,
@@ -155,11 +156,13 @@ mod tests {
     use crate::cpu::decompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
-    use compress_utils::cpu_compress::{Compressor, Compressor64, Decompressor, Decompressor64};
+    use compress_utils::context::Context;
+    use compress_utils::cpu_compress::{Compressor64, Decompressor64};
     use compress_utils::general_utils::check_for_debug_mode;
     use decompressor::BatchedDecompressorCpu64;
     use itertools::Itertools;
     use pollster::FutureExt;
+    use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -229,7 +232,7 @@ mod tests {
         // let value_count = 0..(256 * 109);
         let subscriber = tracing_subscriber::fmt()
             .compact()
-            .with_env_filter("wgpu_compress_64=info")
+            .with_env_filter("wgpu_compress_32=info")
             // .with_writer(
             //     OpenOptions::new()
             //         .create(true)
@@ -241,10 +244,16 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values").to_vec();
+        let mut values = get_values().expect("Could not read test values")[0..512].to_vec();
         log::info!("Starting compression of {} values", values.len());
+        let context = Arc::new(
+            Context::initialize_with_adapter("NVIDIA".to_string())
+                .block_on()
+                .unwrap(),
+        );
         let mut compressor = ChimpCompressorBatched {
             finalizer: GPU,
+            context: context.clone(),
             ..ChimpCompressorBatched::default()
         };
         if check_for_debug_mode().expect("Could not read file system") {
@@ -267,5 +276,6 @@ mod tests {
                 panic!("{}", err);
             }
         }
+        // let value_count = 0..(256 * 109);
     }
 }

@@ -3,7 +3,8 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::S;
-use compress_utils::{wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::wgpu_utils::ShaderType;
+use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
 use std::fs;
@@ -91,7 +92,8 @@ impl ComputeS for ComputeSImpl {
             self.context(),
             &temp,
             vec![&s_storage_buffer, &input_storage_buffer, &s_staging_buffer],
-            workgroup_count
+            workgroup_count,
+            ShaderType::WGSL
         );
 
         let output = wgpu_utils::get_s_output::<S>(

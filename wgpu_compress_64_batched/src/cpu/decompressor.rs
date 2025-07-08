@@ -2,7 +2,7 @@ use crate::info;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::bit_utils::BitReadable;
-use compress_utils::cpu_compress::{DecompressionError, Decompressor, Decompressor64};
+use compress_utils::cpu_compress::{DecompressionError, Decompressor64};
 use compress_utils::time_it;
 use thiserror::Error;
 

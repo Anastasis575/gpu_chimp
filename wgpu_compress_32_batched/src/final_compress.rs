@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput, S};
+use compress_utils::wgpu_utils::ShaderType;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
@@ -26,7 +27,7 @@ pub struct FinalCompressImpl {
 }
 
 impl FinalCompressImpl {
-    pub fn new(context: Arc<Context>, debug: bool) -> Self {
+    pub fn new(context: Arc<Context>, _debug: bool) -> Self {
         Self {
             context,
             // debug
@@ -112,7 +113,8 @@ impl FinalCompress for FinalCompressImpl {
                 &output_storage_buffer,
                 &output_staging_buffer,
             ],
-            workgroup_count
+            workgroup_count,
+            ShaderType::WGSL
         );
 
         let output = wgpu_utils::get_s_output::<ChimpOutput>(

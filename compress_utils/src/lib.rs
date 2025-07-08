@@ -273,7 +273,7 @@ pub mod wgpu_utils {
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) = flume::bounded(1);
         buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-        let result = context.device().poll(Wait)?.wait_finished();
+        let _result = context.device().poll(Wait)?.wait_finished();
         receiver.recv_async().await??;
         let output: Vec<T> =
             bytemuck::cast_slice(buffer_slice.get_mapped_range()[..].iter().as_slice()).to_vec();
@@ -493,9 +493,9 @@ pub mod general_utils {
     }
     #[macro_export]
     macro_rules! execute_compute_shader {
-        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr) => {
+        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr,$shader_type:expr) => {
             let compute_shader_module =
-                wgpu_utils::create_shader_module($context.device(), $shader_source)?;
+                wgpu_utils::create_shader_module($context.device(), $shader_source, $shader_type)?;
             let binding_group_layout = wgpu_utils::assign_bind_groups($context.device(), $buffers);
             let compute_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
                 $context.device(),

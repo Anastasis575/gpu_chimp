@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use thiserror::Error;
 use wgpu::{Adapter, Device, Queue, RequestDeviceError};
+use wgpu_types::Trace::Off;
 
 #[derive(Debug)]
 pub struct Context {

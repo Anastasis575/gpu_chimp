@@ -152,13 +152,11 @@ impl ChimpCompressorBatched {
 }
 #[cfg(test)]
 mod tests {
-    use crate::cpu::decompressor;
-    use crate::cpu::decompressor::BatchedDecompressorCpu;
     use crate::decompressor::BatchedGPUDecompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
     use compress_utils::context::Context;
-    use compress_utils::cpu_compress::{CPUCompressor, Compressor, Decompressor};
+    use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use itertools::Itertools;
     use pollster::FutureExt;

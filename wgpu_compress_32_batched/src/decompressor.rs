@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
+use compress_utils::wgpu_utils::ShaderType;
 use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
@@ -168,7 +169,8 @@ impl BatchedGPUDecompressor {
                     &size_uniform,
                     &in_size,
                 ],
-                workgroup_count
+                workgroup_count,
+                ShaderType::WGSL
             );
 
             let output = wgpu_utils::get_s_output::<f32>(

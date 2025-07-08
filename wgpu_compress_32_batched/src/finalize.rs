@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
 use compress_utils::types::ChimpOutput;
+use compress_utils::wgpu_utils::ShaderType;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
@@ -111,7 +112,8 @@ impl Finalize for Finalizer {
                 &useful_byte_count_storage,
                 &useful_byte_count_staging,
             ],
-            workgroup_count
+            workgroup_count,
+            ShaderType::WGSL
         );
 
         let output = wgpu_utils::get_s_output::<u32>(

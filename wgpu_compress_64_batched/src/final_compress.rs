@@ -26,7 +26,7 @@ pub struct FinalCompressImpl64<'a> {
 }
 
 impl<'a> FinalCompressImpl64<'a> {
-    pub fn new(context: &'a Context, debug: bool) -> Self {
+    pub fn new(context: &'a Context, _debug: bool) -> Self {
         Self {
             context,
             // debug
