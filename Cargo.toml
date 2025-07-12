@@ -3,7 +3,8 @@ members = [
     "compress_utils",
     "wgpu_compress_32",
     "wgpu_compress_32_batched",
-    "compressapi"
+    "compressapi",
+    "api"
 ]
 resolver = "2"
 
