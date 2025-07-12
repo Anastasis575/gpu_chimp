@@ -1,10 +1,11 @@
 [package]
-name = "wgpu_compress_32_batched"
+name = "wgpu_compress_64_batched"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 compress_utils = { path = "../compress_utils" }
+wgpu_compress_32_batched = { path = "../wgpu_compress_32_batched" }
 anyhow = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }

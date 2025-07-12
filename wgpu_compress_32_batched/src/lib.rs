@@ -1,6 +1,6 @@
 mod compute_s_shader;
 mod cpu;
-mod decompressor;
+pub mod decompressor;
 mod final_compress;
 mod finalize;
 
@@ -61,7 +61,7 @@ impl Default for ChimpCompressorBatched {
 }
 
 #[async_trait]
-impl Compressor for ChimpCompressorBatched {
+impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();

@@ -41,16 +41,16 @@ impl CPUCompressor {
 }
 
 #[async_trait]
-pub trait Compressor {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError>;
+pub trait Compressor<T> {
+    async fn compress(&self, vec: &mut Vec<T>) -> Result<Vec<u8>, CompressionError>;
 }
 
 #[async_trait]
-pub trait Decompressor {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError>;
+pub trait Decompressor<T> {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<T>, DecompressionError>;
 }
 #[async_trait]
-impl Compressor for CPUCompressor {
+impl Compressor<f32> for CPUCompressor {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut bit_vec = to_bit_vec(vec[0].to_bits());
         let mut last_lead = 0;
@@ -92,7 +92,7 @@ impl Compressor for CPUCompressor {
 }
 
 #[async_trait]
-impl Decompressor for CPUCompressor {
+impl Decompressor<f32> for CPUCompressor {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         let input_vector = BitVec::from_bytes(vec.as_slice());
         let mut input_index: usize;
@@ -193,7 +193,7 @@ impl Decompressor for CPUCompressor {
 
 pub struct TimedDecompressor<T>
 where
-    T: Decompressor + Send + Sync,
+    T: Decompressor<f32> + Send + Sync,
 {
     decompressor: T,
 }
@@ -207,9 +207,9 @@ impl From<CPUCompressor> for TimedDecompressor<CPUCompressor> {
 }
 
 #[async_trait]
-impl<T> Decompressor for TimedDecompressor<T>
+impl<T> Decompressor<f32> for TimedDecompressor<T>
 where
-    T: Decompressor + Send + Sync,
+    T: Decompressor<f32> + Send + Sync,
 {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         let mut total_millis: u128 = 0;
@@ -229,7 +229,7 @@ where
 
 pub struct TimedCompressor<T>
 where
-    T: Compressor + Send + Sync,
+    T: Compressor<f32> + Send + Sync,
 {
     compressor: T,
 }
@@ -239,9 +239,9 @@ impl From<CPUCompressor> for TimedCompressor<CPUCompressor> {
     }
 }
 #[async_trait]
-impl<T> Compressor for TimedCompressor<T>
+impl<T> Compressor<f32> for TimedCompressor<T>
 where
-    T: Compressor + Send + Sync,
+    T: Compressor<f32> + Send + Sync,
 {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut total_millis: u128 = 0;

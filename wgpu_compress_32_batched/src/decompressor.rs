@@ -5,16 +5,15 @@ use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnosti
 use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
-use pollster::block_on;
+use pollster::{block_on, FutureExt};
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
-use wgpu::naga::Expression::Math;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-impl Decompressor for BatchedGPUDecompressor {
+impl Decompressor<f32> for BatchedGPUDecompressor {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
@@ -84,6 +83,13 @@ impl Decompressor for BatchedGPUDecompressor {
 
 pub struct BatchedGPUDecompressor {
     context: Arc<Context>,
+}
+impl Default for BatchedGPUDecompressor {
+    fn default() -> Self {
+        Self {
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
+        }
+    }
 }
 impl MaxGroupGnostic for BatchedGPUDecompressor {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
@@ -195,9 +201,9 @@ impl BatchedGPUDecompressor {
         Ok(result)
     }
 
-    pub fn new(context_builder: impl ToContextable) -> Self {
+    pub fn new(context_builder: impl Into<Arc<Context>>) -> Self {
         Self {
-            context: context_builder.context(),
+            context: context_builder.into(),
         }
     }
 
@@ -210,26 +216,5 @@ impl BatchedGPUDecompressor {
     }
     pub fn queue(&self) -> &Queue {
         self.context.queue()
-    }
-}
-pub trait ToContextable {
-    fn context(self) -> Arc<Context>;
-}
-
-impl ToContextable for Arc<Context> {
-    fn context(self) -> Arc<Context> {
-        self
-    }
-}
-
-impl ToContextable for Context {
-    fn context(self) -> Arc<Context> {
-        Arc::new(self)
-    }
-}
-
-impl ToContextable for () {
-    fn context(self) -> Arc<Context> {
-        Arc::new(block_on(Context::initialize_default_adapter()).unwrap())
     }
 }
