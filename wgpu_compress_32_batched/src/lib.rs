@@ -1,6 +1,6 @@
 mod compute_s_shader;
 mod cpu;
-mod decompressor;
+pub mod decompressor;
 mod final_compress;
 mod finalize;
 
@@ -61,7 +61,7 @@ impl Default for ChimpCompressorBatched {
 }
 
 #[async_trait]
-impl Compressor for ChimpCompressorBatched {
+impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
@@ -149,13 +149,11 @@ impl ChimpCompressorBatched {
 }
 #[cfg(test)]
 mod tests {
-    use crate::cpu::decompressor;
-    use crate::cpu::decompressor::BatchedDecompressorCpu;
     use crate::decompressor::BatchedGPUDecompressor;
     use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
     use compress_utils::context::Context;
-    use compress_utils::cpu_compress::{CPUCompressor, Compressor, Decompressor};
+    use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use itertools::Itertools;
     use pollster::FutureExt;

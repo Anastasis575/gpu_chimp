@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use bit_vec::BitVec;
-use compress_utils::bit_utils::{to_bit_vec, BitError};
+use compress_utils::bit_utils::{BitError, ToBitVec};
 use compress_utils::context::{Context, UtilError};
 use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{get_buffer_size, Padding};
@@ -41,7 +41,7 @@ impl ChimpCompressor {
         input: &mut [f32],
         output: &Vec<ChimpOutput>,
     ) -> Result<BitVec, BitError> {
-        let mut output_vec = to_bit_vec(input[0].to_bits());
+        let mut output_vec = input[0].to_bits().to_bit_vec();
         for value in output {
             if value.bit_count() >= 32 {
                 for i in (0..(value.bit_count() - 32)).rev() {
@@ -273,7 +273,7 @@ impl Default for ChimpCompressor {
 }
 
 #[async_trait]
-impl Compressor for ChimpCompressor {
+impl Compressor<f32> for ChimpCompressor {
     async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size();
@@ -321,7 +321,7 @@ impl Compressor for ChimpCompressor {
 mod tests {
     use bit_vec::BitVec;
     use compress_utils::bit_utils::{
-        ceil_log2, to_bit_vec, to_bit_vec_no_padding, BitReadable, BitWritable,
+        ceil_log2, to_bit_vec_no_padding, BitReadable, BitWritable, ToBitVec,
     };
 
     #[allow(clippy::identity_op)]
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn test2() {
         let x = 6u32;
-        let t = to_bit_vec(x);
+        let t = x.to_bit_vec();
         assert_eq!("00000000000000000000000000000110", t.to_string());
     }
     #[test]
@@ -371,6 +371,6 @@ mod tests {
         let mut vec = BitVec::new();
         vec.push(true);
         vec.extend(to_bit_vec_no_padding(1));
-        assert_eq!(vec, to_bit_vec(3));
+        assert_eq!(vec, 3.to_bit_vec());
     }
 }

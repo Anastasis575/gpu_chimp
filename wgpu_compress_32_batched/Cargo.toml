@@ -13,6 +13,6 @@ wgpu = { workspace = true }
 wgpu-types = { workspace = true }
 bit-vec = { workspace = true }
 async-trait = { workspace = true }
-pollster = "0.4.0"
+pollster = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 thiserror = { workspace = true }

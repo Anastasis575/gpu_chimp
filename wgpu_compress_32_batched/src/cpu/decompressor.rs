@@ -155,7 +155,7 @@ impl BatchedDecompressorCpu {
     }
 }
 #[async_trait]
-impl Decompressor for BatchedDecompressorCpu {
+impl Decompressor<f32> for BatchedDecompressorCpu {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         self.decompress_impl(vec).map_err(DecompressionError::from)
     }

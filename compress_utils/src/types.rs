@@ -1,4 +1,4 @@
-use crate::bit_utils::to_bit_vec;
+use crate::bit_utils::ToBitVec;
 use std::fmt;
 use std::fmt::Formatter;
 
@@ -51,8 +51,8 @@ impl fmt::Display for ChimpOutput {
         write!(
             f,
             "Output:{{upper_bits:{}, lower_bits: {},bit_count: {} }}",
-            to_bit_vec(self.upper_bits),
-            to_bit_vec(self.lower_bits),
+            self.upper_bits.to_bit_vec(),
+            self.lower_bits.to_bit_vec(),
             self.bit_count
         )
     }

@@ -59,8 +59,8 @@ impl Context {
     pub async fn initialize_default_adapter() -> Result<Self, UtilError> {
         Self::_initialize(None).await
     }
-    pub async fn initialize_with_adapter(device: String) -> Result<Self, UtilError> {
-        Self::_initialize(Some(device)).await
+    pub async fn initialize_with_adapter(device: impl Into<String>) -> Result<Self, UtilError> {
+        Self::_initialize(Some(device.into())).await
     }
 
     async fn _initialize(device_name: Option<String>) -> Result<Self, UtilError> {

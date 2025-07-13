@@ -26,7 +26,7 @@ pub struct FinalCompressImpl {
 }
 
 impl FinalCompressImpl {
-    pub fn new(context: Arc<Context>, debug: bool) -> Self {
+    pub fn new(context: Arc<Context>, _debug: bool) -> Self {
         Self {
             context,
             // debug

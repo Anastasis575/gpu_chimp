@@ -9,12 +9,11 @@ use pollster::block_on;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
-use wgpu::naga::Expression::Math;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-impl Decompressor for BatchedGPUDecompressor {
+impl Decompressor<f32> for BatchedGPUDecompressor {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
@@ -195,9 +194,9 @@ impl BatchedGPUDecompressor {
         Ok(result)
     }
 
-    pub fn new(context_builder: impl ToContextable) -> Self {
+    pub fn new(context_builder: impl Into<Arc<Context>>) -> Self {
         Self {
-            context: context_builder.context(),
+            context: context_builder.into(),
         }
     }
 
@@ -210,26 +209,5 @@ impl BatchedGPUDecompressor {
     }
     pub fn queue(&self) -> &Queue {
         self.context.queue()
-    }
-}
-pub trait ToContextable {
-    fn context(self) -> Arc<Context>;
-}
-
-impl ToContextable for Arc<Context> {
-    fn context(self) -> Arc<Context> {
-        self
-    }
-}
-
-impl ToContextable for Context {
-    fn context(self) -> Arc<Context> {
-        Arc::new(self)
-    }
-}
-
-impl ToContextable for () {
-    fn context(self) -> Arc<Context> {
-        Arc::new(block_on(Context::initialize_default_adapter()).unwrap())
     }
 }
