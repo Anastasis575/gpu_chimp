@@ -305,23 +305,46 @@ pub mod bit_utils {
     #[derive(Error, Debug)]
     pub enum BitError {}
 
-    pub fn to_bit_vec(num: u32) -> BitVec {
-        let mut bit_vec = BitVec::new();
-        for i in (0..32).rev() {
-            bit_vec.push((num >> i) % 2 == 1);
-        }
-        bit_vec
+    pub trait ToBitVec: Copy {
+        fn to_bit_vec(self) -> BitVec;
     }
+
+    impl<T: Copy> ToBitVec for &T {
+        fn to_bit_vec(self) -> BitVec {
+            self.to_owned().to_bit_vec()
+        }
+    }
+    impl ToBitVec for u32 {
+        fn to_bit_vec(self) -> BitVec {
+            let mut bit_vec = BitVec::new();
+            for i in (0..32).rev() {
+                bit_vec.push((self >> i) % 2 == 1);
+            }
+            bit_vec
+        }
+    }
+    impl ToBitVec for u64 {
+        fn to_bit_vec(self) -> BitVec {
+            let mut bit_vec = BitVec::new();
+            for i in (0..32).rev() {
+                bit_vec.push((self >> i) % 2 == 1);
+            }
+            bit_vec
+        }
+    }
+    impl ToBitVec for u8 {
+        fn to_bit_vec(self) -> BitVec {
+            let mut bit_vec = BitVec::new();
+            for i in (0..32).rev() {
+                bit_vec.push((self >> i) % 2 == 1);
+            }
+            bit_vec
+        }
+    }
+
     pub fn to_bit_vec_no_padding(num: u32) -> BitVec {
         let mut bit_vec = BitVec::new();
         for i in (0..ceil_log2(num)).rev() {
-            bit_vec.push((num >> i) % 2 == 1);
-        }
-        bit_vec
-    }
-    pub fn to_bit_vec_u8(num: u8) -> BitVec {
-        let mut bit_vec = BitVec::new();
-        for i in (0..8).rev() {
             bit_vec.push((num >> i) % 2 == 1);
         }
         bit_vec
@@ -336,14 +359,23 @@ pub mod bit_utils {
         }
     }
 
-    pub trait BitWritable {
-        fn write_bits(&mut self, number: u32, size: u32);
+    pub trait BitWritable<T> {
+        fn write_bits(&mut self, number: T, size: u32);
     }
-    impl BitWritable for BitVec {
+    impl BitWritable<u32> for BitVec {
         fn write_bits(&mut self, number: u32, size: u32) {
             if number != 0 {
                 for i in (0..size).rev() {
                     self.push(number & 2u32.pow(i) != 0);
+                }
+            }
+        }
+    }
+    impl BitWritable<u64> for BitVec {
+        fn write_bits(&mut self, number: u64, size: u32) {
+            if number != 0 {
+                for i in (0..size).rev() {
+                    self.push(number & 2u64.pow(i) != 0);
                 }
             }
         }
@@ -387,10 +419,10 @@ pub mod general_utils {
         fn get_max_number_of_groups(&self, content_len: usize) -> usize;
     }
 
-    ///A struct to be able to borrow a usize representing a padding
+    ///A struct to be able to borrow an usize representing a padding value
     pub struct Padding(pub usize);
 
-    /// Add 0s to the end of [values] to be able to seemlessly
+    /// Add 0's to the end of [values] to be able to seamlessly
     pub fn add_padding_to_fit_buffer_count(
         mut values: Vec<f32>,
         buffer_size: usize,

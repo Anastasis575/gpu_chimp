@@ -1,4 +1,4 @@
-use crate::bit_utils::{to_bit_vec, BitReadable, BitWritable};
+use crate::bit_utils::{BitReadable, BitWritable, ToBitVec};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use thiserror::Error;
@@ -52,7 +52,7 @@ pub trait Decompressor<T> {
 #[async_trait]
 impl Compressor<f32> for CPUCompressor {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
-        let mut bit_vec = to_bit_vec(vec[0].to_bits());
+        let mut bit_vec = vec[0].to_bits().to_bit_vec();
         let mut last_lead = 0;
         for i in 1..vec.len() {
             let xorred = (vec[i].to_bits()) ^ (vec[i - 1].to_bits());

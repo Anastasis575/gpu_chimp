@@ -1,0 +1,12 @@
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+compress_utils = { path = "../compress_utils" }
+wgpu_compress_32 = { path = "../wgpu_compress_32" }
+wgpu_compress_32_batched = { path = "../wgpu_compress_32_batched" }
+log = { workspace = true }
+async-trait = { workspace = true }
+pollster = { workspace = true }
