@@ -119,6 +119,13 @@ fn pseudo_u64_add(output:vec2<u64>,number:u32)->vec2<u32>{
     new_ouput.y=isOverflow*(number-diff) + isNotOverflow*(output.y+number);
     return new_ouput;
 }
+fn extractBits(value: u64, start: u32, length: u32) -> u32 {
+    // Create a mask with 'length' number of 1's
+    let mask = (1u << length) - 1u;
+    // Shift right to bring target bits to least significant position
+    // Then apply mask to keep only desired bits
+    return (value >> start) & mask;
+}
 
 @compute
 #@workgroup_size(1)#
