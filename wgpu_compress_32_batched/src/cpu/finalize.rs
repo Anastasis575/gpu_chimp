@@ -1,7 +1,7 @@
 use crate::finalize::Finalize;
 use async_trait::async_trait;
 use bytemuck::Contiguous;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
 use compress_utils::types::ChimpOutput;
 use itertools::Itertools;
 use std::cmp::{max, min};
@@ -161,7 +161,7 @@ impl Finalize for CPUImpl {
         padding: usize,
     ) -> anyhow::Result<Vec<u8>> {
         //The number of iterations
-        let workgroup_count = chimp_output.len() / get_buffer_size();
+        let workgroup_count = chimp_output.len() / ChimpBufferInfo::get().buffer_size();
 
         let actual_output = chimp_output[0..chimp_output.len() - padding].to_vec();
 
@@ -175,7 +175,7 @@ impl Finalize for CPUImpl {
 
         let mut helper = CPUImplHelper {
             chimp_input: actual_output.to_owned(),
-            size: get_buffer_size() as u32,
+            size: ChimpBufferInfo::get().buffer_size() as u32,
             out,
             last_size,
         };
@@ -183,7 +183,10 @@ impl Finalize for CPUImpl {
         //for each workgroup write the bytes concec
         let mut current_index = 0u32;
         for i in 0..workgroup_count {
-            current_index = helper.write(current_index as usize, i * get_buffer_size());
+            current_index = helper.write(
+                current_index as usize,
+                i * ChimpBufferInfo::get().buffer_size(),
+            );
             helper.last_size[i] = current_index;
             current_index += 1;
         }
@@ -202,12 +205,13 @@ impl Finalize for CPUImpl {
                 .flat_map(|it| it.to_be_bytes())
                 .collect_vec();
 
-            let batch_size =
-                if i == workgroup_count - 1 && helper.chimp_input.len() % get_buffer_size() != 0 {
-                    ((helper.chimp_input.len() % get_buffer_size()) - 1) as u8
-                } else {
-                    (get_buffer_size() - 1) as u8
-                };
+            let batch_size = if i == workgroup_count - 1
+                && helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size() != 0
+            {
+                ((helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+            } else {
+                (ChimpBufferInfo::get().buffer_size() - 1) as u32
+            };
 
             final_output.extend(batch_size.to_be_bytes());
             final_output.extend((final_byte_vec.len() as u32).to_be_bytes());

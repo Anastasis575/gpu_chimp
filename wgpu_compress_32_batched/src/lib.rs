@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{add_padding_to_fit_buffer_count, get_buffer_size, Padding};
+use compress_utils::general_utils::{add_padding_to_fit_buffer_count, ChimpBufferInfo, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
 use log::info;
@@ -64,7 +64,7 @@ impl Default for ChimpCompressorBatched {
 impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
-        let buffer_size = get_buffer_size();
+        let buffer_size = ChimpBufferInfo::get().buffer_size();
         let mut values = vec.to_owned();
         values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
         let mut total_millis = 0;
@@ -149,7 +149,6 @@ impl ChimpCompressorBatched {
 }
 #[cfg(test)]
 mod tests {
-    use crate::cpu::decompressor::DebugBatchDecompressorCpu;
     use crate::decompressor::BatchedGPUDecompressor;
     use crate::FinalizerEnum::{CPU, GPU};
     use crate::{cpu, ChimpCompressorBatched};
@@ -157,14 +156,11 @@ mod tests {
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use cpu::decompressor;
-    use decompressor::BatchedDecompressorCpu;
     use itertools::Itertools;
     use pollster::FutureExt;
-    use std::fs::OpenOptions;
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
-    use wgpu::naga::Literal::F32;
 
     fn get_third(field: &str) -> Option<String> {
         field
@@ -245,6 +241,7 @@ mod tests {
         subscriber.init();
 
         let mut values = get_values().expect("Could not read test values").to_vec();
+        values.extend(get_values().expect("Could not read test values").to_vec());
         log::info!("Starting compression of {} values", values.len());
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())

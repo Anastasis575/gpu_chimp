@@ -1,7 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
+use compress_utils::general_utils::{
+    get_buffer_size, trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step,
+};
 use compress_utils::types::S;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
@@ -44,7 +46,7 @@ impl ComputeSImpl {
 
 impl MaxGroupGnostic for ComputeSImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
-        content_len.div(get_buffer_size())
+        content_len.div(ChimpBufferInfo::get().buffer_size())
     }
 }
 
@@ -55,8 +57,10 @@ impl ComputeS for ComputeSImpl {
         // let workgroup_size = format!("@workgroup_size({})", );
 
         let temp = include_str!("shaders/compute_s.wgsl")
-            .replace("@@workgroup_size", &get_buffer_size().to_string())
-            .replace("@@start_index", "0u")
+            .replace(
+                "@@workgroup_size",
+                &ChimpBufferInfo::get().buffer_size().to_string(),
+            )
             .to_string();
 
         //Calculating buffer sizes and workgroup counts
@@ -86,11 +90,21 @@ impl ComputeS for ComputeSImpl {
             WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
-
+        let chunks_buffer = BufferWrapper::uniform_with_content(
+            self.device(),
+            bytemuck::bytes_of(&ChimpBufferInfo::get().chunks()),
+            WgpuGroupId::new(0, 2),
+            Some("Chunks Buffer"),
+        );
         execute_compute_shader!(
             self.context(),
             &temp,
-            vec![&s_storage_buffer, &input_storage_buffer, &s_staging_buffer],
+            vec![
+                &s_storage_buffer,
+                &input_storage_buffer,
+                &s_staging_buffer,
+                &chunks_buffer
+            ],
             workgroup_count
         );
 

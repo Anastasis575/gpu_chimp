@@ -1,5 +1,5 @@
 
-struct S{
+struct Ss{
     leading:i32,
     trailing:i32,
     equal:u32,
@@ -13,7 +13,7 @@ struct Output{
 
 @group(0)
 @binding(0)
-var<storage, read_write> s_store: array<S>; // this is used as both input and output for convenience
+var<storage, read_write> s_store: array<Ss>; // this is used as both input and output for convenience
 
 @group(0)
 @binding(1)
@@ -22,10 +22,13 @@ var<storage, read_write> in: array<f32>; // this is used as both input and outpu
 @group(0)
 @binding(2)
 var<storage, read_write> out: array<Output>; // this is used as both input and output for convenience
+@group(0)
+@binding(3)
+var<uniform> chunks: u32; // this is used as both input and output for convenience
 
 
 
-fn compress(v:f32,s:S,v_prev:f32,s_prev:S) -> Output{
+fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss) -> Output{
 
     //Conditions
     var trail_gt_6=u32(s.trailing>6);
@@ -121,7 +124,10 @@ fn pseudo_u64_add(output:vec2<u32>,number:u32)->vec2<u32>{
 }
 
 @compute
-#@workgroup_size(1)#
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    out[global_id.x+1] = compress(in[global_id.x+1],s_store[global_id.x+1],in[global_id.x],s_store[global_id.x]);
+@workgroup_size(256)
+fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation_id) invocation_id: vec3<u32>) {
+     for (var i=0u;i<chunks;i++){
+        let index:u32=workgroup_id.x * 256 * chunks + invocation_id.x+i*256u;
+        out[index+1] = compress(in[index+1],s_store[index+1],in[index],s_store[index]);
+    }
 }
