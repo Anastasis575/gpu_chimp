@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
@@ -50,7 +50,7 @@ impl FinalCompressImpl {
 
 impl MaxGroupGnostic for FinalCompressImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
-        content_len.div(get_buffer_size())
+        content_len.div(ChimpBufferInfo::get().buffer_size())
     }
 }
 
@@ -62,10 +62,7 @@ impl FinalCompress for FinalCompressImpl {
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> anyhow::Result<Vec<ChimpOutput>> {
-        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
-        let temp = include_str!("shaders/chimp_compress.wgsl")
-            .replace("#@workgroup_size(1)#", &workgroup_size)
-            .to_string();
+        let temp = include_str!("shaders/chimp_compress.wgsl").to_string();
         let size_of_s = size_of::<S>();
         let size_of_output = size_of::<ChimpOutput>();
         let input_length = input.len();
@@ -103,6 +100,12 @@ impl FinalCompress for FinalCompressImpl {
             WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
+        let chunks_buffer = BufferWrapper::uniform_with_content(
+            self.device(),
+            bytemuck::bytes_of(&ChimpBufferInfo::get().chunks()),
+            WgpuGroupId::new(0, 3),
+            Some("Chunks Buffer"),
+        );
         execute_compute_shader!(
             self.context(),
             &temp,
@@ -111,6 +114,7 @@ impl FinalCompress for FinalCompressImpl {
                 &input_storage_buffer,
                 &output_storage_buffer,
                 &output_staging_buffer,
+                &chunks_buffer,
             ],
             workgroup_count
         );
@@ -128,7 +132,7 @@ impl FinalCompress for FinalCompressImpl {
         let mut final_output = Vec::<ChimpOutput>::new();
         final_output.extend(output[0..length_without_padding].to_vec());
         for i in 0..workgroup_count {
-            let index = i * get_buffer_size();
+            let index = i * ChimpBufferInfo::get().buffer_size();
             let mut c = ChimpOutput::default();
             c.set_lower_bits(bytemuck::cast(input[index]));
             c.set_bit_count(32);

@@ -1,5 +1,5 @@
 
-struct S{
+struct Ss {
     leading:i32,
     trailing:i32,
     equal:u32,
@@ -8,20 +8,24 @@ struct S{
 
 @group(0)
 @binding(0)
-var<storage, read_write> s_store: array<S>; // this is used as both input and output for convenience
+var<storage, read_write> s_store: array<Ss>; // this is used as both input and output for convenience
 
 @group(0)
 @binding(1)
 var<storage, read_write> in: array<f32>; // this is used as both input and output for convenience
 
+@group(0)
+@binding(2)
+var<uniform> chunks:u32; // how many iterations per buffer
 
 
-fn calculate_s(id:u32,v_prev:f32,v:f32) -> S{
+
+fn calculate_s(workgoup_size:u32,id:u32,v_prev:f32,v:f32) -> Ss{
    var v_prev_u32=bitcast<u32>(v_prev);
    var v_u32=bitcast<u32>(v);
    var i= v_prev_u32^v_u32;
 
-   var leading=i32((id% @@workgroup_sizeu)!=0)*i32(countLeadingZeros(i));
+   var leading=i32((id % workgoup_size)!=0)*i32(countLeadingZeros(i));
    var trailing=i32(countTrailingZeros(i));
    var equal=u32(i==0);
 
@@ -34,11 +38,14 @@ fn calculate_s(id:u32,v_prev:f32,v:f32) -> S{
 //   leading_rounded+=i32(leading>=20&&leading<24)*22;
 //   leading_rounded+=i32(leading>=24)*24;
 
-   return S(leading,trailing,equal);
+   return Ss(leading,trailing,equal);
 }
 
 @compute
-@workgroup_size(@@workgroup_size)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    s_store[global_id.x+1] = calculate_s(@@start_index+global_id.x,in[global_id.x],in[global_id.x+1]);
+@workgroup_size(256)
+fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation_id) invocation_id: vec3<u32>) {
+    for (var i=0u;i<chunks;i++){
+        let index:u32=workgroup_id.x * 256 * chunks + invocation_id.x+i*256u;
+        s_store[index+1] = calculate_s(chunks*256,index,in[index],in[index+1]);
+    }
 }

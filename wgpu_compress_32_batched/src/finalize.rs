@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
 use compress_utils::types::ChimpOutput;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
@@ -62,7 +62,7 @@ impl Finalize for Finalizer {
         let output_buffer_size = (size_of_out * chimp_input_length) as BufferAddress;
         info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
-        let workgroup_count = chimp_input.len().div(get_buffer_size());
+        let workgroup_count = chimp_input.len().div(ChimpBufferInfo::get().buffer_size());
         info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let out_stage_buffer = BufferWrapper::stage_with_size(
@@ -84,7 +84,7 @@ impl Finalize for Finalizer {
         );
         let size_uniform = BufferWrapper::uniform_with_content(
             self.device(),
-            bytemuck::cast_slice(get_buffer_size().to_ne_bytes().as_slice()),
+            bytemuck::bytes_of(&(ChimpBufferInfo::get().buffer_size() as u32)),
             WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
@@ -131,19 +131,20 @@ impl Finalize for Finalizer {
         .await?;
         let mut final_vec = Vec::<u8>::new();
         for (i, useful_byte_count) in indexes.iter().enumerate() {
-            let start_index = i * get_buffer_size();
+            let start_index = i * ChimpBufferInfo::get().buffer_size();
             let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
             let temp_vec = output[start_index..=byte_count]
                 .iter()
                 .flat_map(|it| it.to_be_bytes())
                 .collect_vec();
 
-            let batch_size =
-                if i == workgroup_count - 1 && chimp_input_length % get_buffer_size() != 0 {
-                    ((chimp_input_length % get_buffer_size()) - 1) as u8
-                } else {
-                    (get_buffer_size() - 1) as u8
-                };
+            let batch_size = if i == workgroup_count - 1
+                && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
+            {
+                ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+            } else {
+                (ChimpBufferInfo::get().buffer_size() - 1) as u32
+            };
             final_vec.extend(batch_size.to_be_bytes());
             final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
             final_vec.extend(temp_vec);

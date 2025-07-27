@@ -1,12 +1,11 @@
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::{get_buffer_size, trace_steps, MaxGroupGnostic, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
-use pollster::{block_on, FutureExt};
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::fs;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
@@ -27,13 +26,13 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
-                    let buffer_value_count = u8::from_be_bytes(
-                        compressed_bytes_vec[current_index..current_index + size_of::<u8>()]
+                    let buffer_value_count = u32::from_be_bytes(
+                        compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
                     ) as usize
                         + 1;
-                    current_index += size_of::<u8>();
+                    current_index += size_of::<u32>();
 
                     let size_in_bytes = u32::from_be_bytes(
                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
@@ -66,7 +65,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                     .decompress_block(
                         vec_window.as_slice(),
                         input_indexes.as_slice(),
-                        get_buffer_size(),
+                        ChimpBufferInfo::get().buffer_size(),
                     )
                     .await?;
 
@@ -85,13 +84,6 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
 pub struct BatchedGPUDecompressor {
     context: Arc<Context>,
 }
-impl Default for BatchedGPUDecompressor {
-    fn default() -> Self {
-        Self {
-            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
-        }
-    }
-}
 impl MaxGroupGnostic for BatchedGPUDecompressor {
     fn get_max_number_of_groups(&self, _content_len: usize) -> usize {
         self.context().get_max_workgroup_size()
@@ -105,8 +97,7 @@ impl BatchedGPUDecompressor {
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f32>, DecompressionError> {
-        let loop_size = get_buffer_size().to_string();
-        let shader_code = include_str!("shaders/decompress.wgsl").replace("@@size", &loop_size);
+        let shader_code = include_str!("shaders/decompress.wgsl");
 
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
@@ -141,8 +132,9 @@ impl BatchedGPUDecompressor {
                 iteration_compressed_values.len() * size_of::<u8>()
             );
 
-            let out_buffer_size =
-                (iteration_input_indexes.len() - 1) * get_buffer_size() * size_of::<u32>();
+            let out_buffer_size = (iteration_input_indexes.len() - 1)
+                * ChimpBufferInfo::get().buffer_size()
+                * size_of::<u32>();
             info!(
                 "The uncompressed output values buffer size in bytes: {}",
                 out_buffer_size

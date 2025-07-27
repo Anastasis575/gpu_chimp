@@ -4,17 +4,13 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::bit_utils::BitReadable;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::{get_buffer_size, trace_steps, Step};
-use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
+use compress_utils::time_it;
 use itertools::Itertools;
 use log::trace;
 use std::cmp::{max, min};
 use std::fs;
-use std::panic::catch_unwind;
-use std::slice::IterMut;
-use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use wgpu::naga::Statement::Return;
 use wgpu_types::BufferAddress;
 
 #[derive(Debug, Error)]
@@ -229,7 +225,7 @@ impl Decompressor<f32> for DebugBatchDecompressorCpu {
                     .decompress_block(
                         vec_window.as_slice(),
                         input_indexes.as_slice(),
-                        get_buffer_size(),
+                        ChimpBufferInfo::get().buffer_size(),
                     )
                     .await?;
 
@@ -252,7 +248,7 @@ impl DebugBatchDecompressorCpu {
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f32>, DecompressionError> {
-        //how many buffers fit into the GPU
+        // Number of buffers that fit into the GPU
         let workgroup_count = input_indexes.len() - 1;
 
         //how many iterations I need to fully decompress all the buffers
@@ -285,8 +281,9 @@ impl DebugBatchDecompressorCpu {
                 iteration_compressed_values.len() * size_of::<u8>()
             );
 
-            let out_buffer_size =
-                (iteration_input_indexes.len() - 1) * get_buffer_size() * size_of::<u32>();
+            let out_buffer_size = (iteration_input_indexes.len() - 1)
+                * ChimpBufferInfo::get().buffer_size()
+                * size_of::<u32>();
             info!(
                 "The uncompressed output values buffer size in bytes: {}",
                 out_buffer_size
@@ -297,7 +294,7 @@ impl DebugBatchDecompressorCpu {
 
             let workgroups = iteration_input_indexes.len() - 1;
 
-            let output = vec![0f32; workgroups * get_buffer_size()];
+            let output = vec![0f32; workgroups * ChimpBufferInfo::get().buffer_size()];
             let mut writer = CPUWrite::new(
                 iteration_compressed_values,
                 output,
@@ -305,15 +302,9 @@ impl DebugBatchDecompressorCpu {
                 buffer_value_count as u32,
             );
             for workgroup in 0..workgroups {
-                let input_buffer_size: u32 =
-                    writer.input_index[workgroup + 1] - writer.input_index[workgroup];
                 let index = writer.input_index[workgroup];
 
-                writer.write(
-                    input_buffer_size,
-                    index,
-                    (workgroup * buffer_value_count).try_into().unwrap(),
-                )
+                writer.write(index, (workgroup * buffer_value_count).try_into().unwrap())
             }
             result.extend(writer.output());
         }
@@ -344,10 +335,10 @@ impl CPUWrite {
     fn output(self) -> Vec<f32> {
         self.output
     }
-    pub(crate) fn write(&mut self, input_buffer_size: u32, input_index: u32, output_index: u32) {
-        let mut current_index = input_index + 1u32;
+    pub(crate) fn write(&mut self, input_index: u32, output_index: u32) {
+        let current_index = input_index + 1u32;
         //Current Remaining offset
-        let mut current_offset = 0u32;
+        let current_offset = 0u32;
 
         let mut current_info = CurrentInfo::new(current_index, current_offset);
 
@@ -365,7 +356,7 @@ impl CPUWrite {
         current_info.current_offset += 32u32;
         // current_info.current_index+=1;
         let mut value = 0u32;
-        for i in 1..self.size {
+        for _i in 1..self.size {
             // if we have not finished reading values from the uncompressed buffers
             if current_info.current_index >= (self.input.len() as u32 - 1u32)
                 && current_info.current_offset - 1u32 <= 0
@@ -482,7 +473,7 @@ impl CPUWrite {
         value.current_offset = (if corrected_value > 0 { 1 } else { 0 } * (corrected_value)
             + if corrected_value <= 0 { 1 } else { 0 } * (32 + corrected_value))
             as u32;
-        value.current_index += if corrected_value <= 0 { 1 } else { 0 }; //1 if it's true and 0 otherwise
+        value.current_index += if corrected_value <= 0 { 1 } else { 0 }; //1 if it's true, and 0 otherwise
         value
     }
 
@@ -493,7 +484,7 @@ impl CPUWrite {
             extract_bits(self.input[array_index as usize], index - len, len)
         } else {
             // Spans two u32 elements
-            let bits_in_first = index;
+            let _bits_in_first = index;
             let bits_in_second = length - index;
 
             let first_part = extract_bits(self.input[array_index as usize], 0, index);

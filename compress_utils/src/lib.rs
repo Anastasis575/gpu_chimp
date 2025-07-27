@@ -514,8 +514,52 @@ pub mod general_utils {
         Ok(final_debug)
     }
 
-    pub fn get_buffer_size() -> usize {
-        let default_buffer = 64usize;
+    /// This function retrieves the buffer size for the application, factoring in environment-specific
+    /// configurations and performing necessary validations.
+    ///
+    /// # Details
+    /// The function checks for an environment variable `CHIMP_BUFFER_SIZE` to determine the buffer size.
+    /// If the variable is not set or contains an invalid value, a default size of 64 bytes is used.
+    /// The function ensures that the buffer size meets the following conditions:
+    /// 1. The buffer size must be greater than 0.
+    /// 2. The buffer size must be a multiple of 256.
+    ///
+    /// If these conditions are not met, the function will `panic` with an appropriate error message.
+    ///
+    /// Once the buffer size is determined and validated, it updates the environment variable
+    /// `CHIMP_BUFFER_SIZE` to reflect the finalized value.
+    ///
+    /// # Returns
+    /// A `ChimpBufferInfo` struct is returned, containing:
+    /// - The final buffer size.
+    /// - The number of 256-byte chunks that fit into the buffer size (calculated as `final_buffer / 256`).
+    ///
+    /// # Environment Variable
+    /// - `CHIMP_BUFFER_SIZE`: Used as an override to set a custom buffer size. If not set or invalid, the
+    ///   default value of 64 bytes will be used.
+    ///
+    /// # Panics
+    /// - Panics if the final buffer size is not greater than 0.
+    /// - Panics if the final buffer size is not a multiple of 256.
+    ///
+    /// # Logging
+    /// Logs warnings in the following cases:
+    /// - If `CHIMP_BUFFER_SIZE` is set but cannot be parsed as a valid `usize`.
+    /// - If `CHIMP_BUFFER_SIZE` is not set, and the default buffer size is used.
+    ///
+    /// # Example
+    /// ```rust
+    /// use compress_utils::general_utils::get_buffer_size;
+    /// let buffer_info = get_buffer_size();
+    /// println!("Buffer Size: {}, Chunks: {}", buffer_info.buffer_size(), buffer_info.chunks());
+    /// ```
+    ///
+    /// # Notes
+    /// This function is meant to establish a standardized buffer configuration across the application,
+    /// ensuring predictable behavior and compliance with system requirements.
+    /// ```
+    pub fn get_buffer_size() -> ChimpBufferInfo {
+        let default_buffer = 256usize;
         let final_buffer = match std::env::var("CHIMP_BUFFER_SIZE") {
             Ok(buffer_str) => buffer_str.parse::<usize>().unwrap_or_else(|_| {
                 warn!("Buffer size specified but not in usize format... defaulting to 32");
@@ -526,8 +570,43 @@ pub mod general_utils {
                 default_buffer
             }
         };
+        assert!(final_buffer > 0, "Buffer size must be greater than 0");
+        assert_eq!(
+            final_buffer % 256,
+            0,
+            "Buffer size must be a multiple of 256"
+        );
         std::env::set_var("CHIMP_BUFFER_SIZE", final_buffer.to_string());
-        final_buffer
+        ChimpBufferInfo(final_buffer, final_buffer / 256)
+    }
+
+    /// A struct that represents information about a dedicated buffer for Chimp data processing.
+    ///
+    /// The `ChimpBufferInfo` struct encapsulates two pieces of information:
+    /// - The size of the buffer in bytes.
+    /// - The number of elements stored in the buffer.
+    ///
+    /// # Fields
+    /// - `0`: A `usize` representing the size of the buffer in bytes.
+    /// - `1`: A `usize` representing the number of elements present in the buffer.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use compress_utils::general_utils::ChimpBufferInfo;
+    /// let buffer_info = ChimpBufferInfo(1024, 256);
+    /// println!("Buffer size: {} bytes, Elements: {}", buffer_info.buffer_size(), buffer_info.chunks());
+    /// ```
+    pub struct ChimpBufferInfo(usize, usize);
+    impl ChimpBufferInfo {
+        pub fn get() -> Self {
+            get_buffer_size()
+        }
+        pub fn buffer_size(&self) -> usize {
+            self.0
+        }
+        pub fn chunks(&self) -> usize {
+            self.1
+        }
     }
 
     #[derive(Eq, PartialEq, Hash)]
