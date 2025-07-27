@@ -53,13 +53,14 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                     while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(4) {
                         byte_window = rest;
                         //parse u32 from groups of 4 bytes
-                        vec_window.push(*bytemuck::from_bytes::<u32>(first_four_bytes))
+                        let value_u32 = u32::from_be_bytes(first_four_bytes.try_into().unwrap());
+                        vec_window.push(value_u32);
                     }
                     input_indexes.push(vec_window.len() as u32);
                     current_index += size_in_bytes as usize;
                     total_uncompressed_values += buffer_value_count
                 }
-
+                input_indexes.insert(0, 0);
                 //Block is as many buffers fit into the gpu the distinction is made for compatibility reasons
                 let block_values = self
                     .decompress_block(
@@ -92,8 +93,8 @@ impl Default for BatchedGPUDecompressor {
     }
 }
 impl MaxGroupGnostic for BatchedGPUDecompressor {
-    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
-        content_len
+    fn get_max_number_of_groups(&self, _content_len: usize) -> usize {
+        self.context().get_max_workgroup_size()
     }
 }
 
@@ -107,25 +108,41 @@ impl BatchedGPUDecompressor {
         let loop_size = get_buffer_size().to_string();
         let shader_code = include_str!("shaders/decompress.wgsl").replace("@@size", &loop_size);
 
+        //how many buffers fit into the GPU
+        let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
+
+        //how many iterations I need to fully decompress all the buffers
+        let iterator_count = max((input_indexes.len() - 1) / workgroup_count, 1);
+
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
-        let workgroup_count = min(self.get_max_number_of_groups(input_indexes.len()), 1);
         let mut result = Vec::new();
         info!("The wgpu workgroup size: {}", &workgroup_count);
 
-        for iteration in 0..(input_indexes.len() / workgroup_count) {
-            let iteration_compressed_values = compressed_value_slice
-                [iteration * workgroup_count..(iteration + 1) * workgroup_count]
-                .to_vec();
-            let iteration_input_indexes = input_indexes
-                [iteration * workgroup_count..(iteration + 1) * workgroup_count]
-                .to_vec();
+        for iteration in 0..iterator_count {
+            //split all the buffers to the chunks each iteration will use
+            let is_last_iteration = iteration == iterator_count - 1;
+            let iteration_input_indexes = if is_last_iteration {
+                input_indexes[iteration * workgroup_count..].to_vec()
+            } else {
+                input_indexes[iteration * workgroup_count..(iteration + 1) * workgroup_count]
+                    .to_vec()
+            };
+            let first_index = iteration_input_indexes[0] as usize;
+            let iteration_compressed_values = if is_last_iteration {
+                compressed_value_slice[first_index..].to_vec()
+            } else {
+                compressed_value_slice
+                    [first_index..(iteration_input_indexes.last().unwrap().to_owned() as usize)]
+                    .to_vec()
+            };
 
             info!(
                 "The size in bytes of the compressed input vec: {}",
                 iteration_compressed_values.len() * size_of::<u8>()
             );
 
-            let out_buffer_size = buffer_value_count * size_of::<u32>();
+            let out_buffer_size =
+                (iteration_input_indexes.len() - 1) * get_buffer_size() * size_of::<u32>();
             info!(
                 "The uncompressed output values buffer size in bytes: {}",
                 out_buffer_size
@@ -162,6 +179,12 @@ impl BatchedGPUDecompressor {
                 WgpuGroupId::new(0, 3),
                 Some("Total bytes input"),
             );
+            let input_size_uniform = BufferWrapper::uniform_with_content(
+                self.device(),
+                bytemuck::bytes_of(&compressed_value_slice.len()),
+                WgpuGroupId::new(0, 4),
+                Some("Total input buffer length"),
+            );
             info!("Total input values: {}", buffer_value_count);
 
             execute_compute_shader!(
@@ -173,14 +196,16 @@ impl BatchedGPUDecompressor {
                     &out_staging,
                     &size_uniform,
                     &in_size,
+                    &input_size_uniform
                 ],
-                workgroup_count
+                iteration_input_indexes.len() - 1
             );
 
             let output = wgpu_utils::get_s_output::<f32>(
                 self.context(),
                 out_storage_buffer.buffer(),
-                (buffer_value_count * size_of::<f32>()) as BufferAddress,
+                ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f32>())
+                    as BufferAddress,
                 out_staging.buffer(),
             )
             .await?;

@@ -272,7 +272,7 @@ fn insert_bits(input_bits: u32, new_bits: u32, start_index: u32, bit_count: u32)
     output_bits
 }
 
-fn extract_bits(input_bits: u32, start_index: u32, bit_count: u32) -> u32 {
+pub fn extract_bits(input_bits: u32, start_index: u32, bit_count: u32) -> u32 {
     let mut input_bits = input_bits;
     // assert!(start_index + bit_count > 32);
     let end_index = min(start_index + bit_count, 32);

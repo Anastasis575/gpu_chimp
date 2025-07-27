@@ -70,6 +70,7 @@ fn write(idx:u32)->u32{
             fitting = get_fitting(u32(overflow_bits), current_i_bits_left);
             insert_index = get_insert_index(u32(overflow_bits), current_i_bits_left);
             remaining = get_remaining(u32(overflow_bits), current_i_bits_left);
+            
             bits_to_add=extractBits(chimp.upper_bits,u32(overflow_bits-i32(fitting)),fitting);
             out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
 
@@ -82,8 +83,10 @@ fn write(idx:u32)->u32{
             if remaining>0{
                 fitting = get_fitting(remaining, current_i_bits_left);
                 insert_index = get_insert_index(remaining, current_i_bits_left);
+                
                 bits_to_add=extractBits(chimp.upper_bits,0u,fitting);
                 out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+                
                 if current_i_bits_left<=fitting{
                     current_i += 1;
                     current_i_bits_left = 32u;
@@ -96,8 +99,10 @@ fn write(idx:u32)->u32{
         fitting = get_fitting(rest_bits, current_i_bits_left);
         insert_index=get_insert_index(rest_bits, current_i_bits_left);
         remaining=get_remaining(rest_bits, current_i_bits_left);
+        
         bits_to_add=extractBits(chimp.lower_bits, u32(rest_bits - fitting), fitting);
         out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+        
         if current_i_bits_left<=fitting{
             current_i += 1u;
             current_i_bits_left = 32u;
