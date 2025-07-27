@@ -253,7 +253,7 @@ pub mod wgpu_utils {
         let buffer_slice = output_buffer.slice(..);
         let (sender, receiver) = flume::bounded(1);
         buffer_slice.map_async(wgpu::MapMode::Read, move |r| sender.send(r).unwrap());
-        let result = context.device().poll(Wait)?.wait_finished();
+        let _result = context.device().poll(Wait)?.wait_finished();
         receiver.recv_async().await??;
         let output: Vec<T> =
             bytemuck::cast_slice(buffer_slice.get_mapped_range()[..].iter().as_slice()).to_vec();
@@ -422,7 +422,7 @@ pub mod general_utils {
     ///A struct to be able to borrow an usize representing a padding value
     pub struct Padding(pub usize);
 
-    /// Add 0's to the end of [values] to be able to seamlessly
+    /// Add 0's to the end of [values] to be able to seamlessly work with the shadder's size requirements
     pub fn add_padding_to_fit_buffer_count(
         mut values: Vec<f32>,
         buffer_size: usize,

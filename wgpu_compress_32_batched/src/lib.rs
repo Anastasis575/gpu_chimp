@@ -149,17 +149,22 @@ impl ChimpCompressorBatched {
 }
 #[cfg(test)]
 mod tests {
+    use crate::cpu::decompressor::DebugBatchDecompressorCpu;
     use crate::decompressor::BatchedGPUDecompressor;
-    use crate::ChimpCompressorBatched;
     use crate::FinalizerEnum::{CPU, GPU};
+    use crate::{cpu, ChimpCompressorBatched};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
+    use cpu::decompressor;
+    use decompressor::BatchedDecompressorCpu;
     use itertools::Itertools;
     use pollster::FutureExt;
+    use std::fs::OpenOptions;
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
+    use wgpu::naga::Literal::F32;
 
     fn get_third(field: &str) -> Option<String> {
         field
@@ -239,7 +244,7 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values")[0..512].to_vec();
+        let mut values = get_values().expect("Could not read test values").to_vec();
         log::info!("Starting compression of {} values", values.len());
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
@@ -259,11 +264,13 @@ mod tests {
 
         // assert_eq!(compressed_values2, compressed_values3);
 
-        let decompressor = BatchedGPUDecompressor::new(context.clone());
+        // let decompressor = DebugBatchDecompressorCpu {};
+        // let decompressor = BatchedDecompressorCpu {};
+        let decompressor = BatchedGPUDecompressor::new(context);
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
-                // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                // fs::write("expected.log", values.iter().join("\n")).unwrap();
+                fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                fs::write("expected.log", values.iter().join("\n")).unwrap();
                 assert_eq!(decompressed_values, values)
             }
             Err(err) => {
