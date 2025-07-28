@@ -16,8 +16,10 @@ use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{add_padding_to_fit_buffer_count, ChimpBufferInfo, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
+use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
+use std::cmp::max;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -75,41 +77,88 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let final_compress_impl = self.compute_final_compress_factory();
         let finalize_impl = self.compute_finalize_factory();
 
-        let output_vec: BitVec;
-        time_it!(
-            {
-                s_values = compute_s_impl.compute_s(&mut values).await?;
-            },
-            total_millis,
-            "s computation stage"
-        );
-        time_it!(
-            {
-                chimp_vec = final_compress_impl
-                    .final_compress(&mut values, &mut s_values, 0)
-                    .await?;
-            },
-            total_millis,
-            "final output stage"
-        );
-        time_it!(
-            {
-                output_vec = BitVec::from_bytes(
-                    finalize_impl
-                        .finalize(&mut chimp_vec, padding.0)
-                        .await?
-                        .as_slice(),
-                );
-            },
-            total_millis,
-            "final Result collection"
+        let mut output_vec = BitVec::new();
+        let iterations_to_fit_max_buffer_size = self.process_iterations_for_max_buffer_size(vec);
+        let iterations_to_fit_max_workgroup_count =
+            self.process_iterations_for_max_buffer_size(vec);
+        let actual_number_of_iterations = max(
+            iterations_to_fit_max_buffer_size,
+            iterations_to_fit_max_workgroup_count,
         );
 
+        let sub_set_size = vec.len() / actual_number_of_iterations;
+        for iteration in 0..actual_number_of_iterations {
+            let mut iteration_values = if iteration == actual_number_of_iterations - 1 {
+                vec[iteration * sub_set_size..]
+                    .iter()
+                    .map(|it| it.to_owned())
+                    .collect_vec()
+            } else {
+                vec[iteration * sub_set_size..(iteration + 1) * sub_set_size]
+                    .iter()
+                    .map(|it| it.to_owned())
+                    .collect_vec()
+            };
+            time_it!(
+                {
+                    s_values = compute_s_impl.compute_s(&mut iteration_values).await?;
+                },
+                total_millis,
+                "s computation stage"
+            );
+            time_it!(
+                {
+                    chimp_vec = final_compress_impl
+                        .final_compress(&mut iteration_values, &mut s_values, 0)
+                        .await?;
+                },
+                total_millis,
+                "final output stage"
+            );
+            time_it!(
+                {
+                    output_vec.extend(BitVec::from_bytes(
+                        finalize_impl
+                            .finalize(&mut chimp_vec, padding.0)
+                            .await?
+                            .as_slice(),
+                    ));
+                },
+                total_millis,
+                "final Result collection"
+            );
+        }
         Ok(output_vec.to_bytes())
     }
 }
 
 impl ChimpCompressorBatched {
+    /// Processes the number of iterations required to handle the maximum buffer size for the given `vec`.
+    ///
+    /// # Parameters
+    /// - `vec`: A mutable reference to a `Vec<f32>`. This vector is used for calculations to determine
+    ///   how many iterations are needed to stay within the maximum buffer size.
+    ///
+    /// # Returns
+    /// - Returns the number of iterations required to stay within the maximum allowed storage buffer size.
+    ///
+    /// # Constants
+    /// - `BUFFER_MAX_SIZE`: A constant defining the maximum storage buffer size as `134217728` bytes
+    ///   (128 MiB). This is the maximum amount of data one storage buffer can hold.
+    ///
+    /// # Calculations
+    /// - The function calculates the number of iterations by dividing the total size of the data in
+    ///   the vector (`vec.len() * size_of::<S>()`) by the `BUFFER_MAX_SIZE`.
+    /// - If the result is less than `1`, it defaults to returning `1` to guarantee at least one iteration.
+    fn process_iterations_for_max_buffer_size(&self, vec: &mut Vec<f32>) -> usize {
+        const BUFFER_MAX_SIZE: usize = 134217728;
+        let size_of_s = size_of::<S>();
+        (vec.len() * size_of::<S>()) / BUFFER_MAX_SIZE + 1 //the S buffers are the most costly to allocate
+    }
+    fn process_iterations_for_max_workgroup_count(&self, vec: &mut Vec<f32>) -> usize {
+        let max_workgroup_count = self.context.get_max_workgroup_size();
+        vec.len() / max_workgroup_count + 1
+    }
     pub fn new(debug: bool, context: Arc<Context>, finalizer: FinalizerEnum) -> Self {
         Self {
             debug,

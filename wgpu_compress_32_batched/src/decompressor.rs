@@ -1,3 +1,4 @@
+use crate::FinalizerEnum;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
@@ -5,6 +6,7 @@ use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnosti
 use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
+use pollster::FutureExt;
 use std::cmp::max;
 use std::fs;
 use std::sync::Arc;
@@ -89,7 +91,13 @@ impl MaxGroupGnostic for BatchedGPUDecompressor {
         self.context().get_max_workgroup_size()
     }
 }
-
+impl Default for BatchedGPUDecompressor {
+    fn default() -> Self {
+        Self {
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
+        }
+    }
+}
 impl BatchedGPUDecompressor {
     pub(crate) async fn decompress_block(
         &self,

@@ -102,9 +102,9 @@ impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressor
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
         let decompressed = self.decompressor32bits.decompress(vec).await?;
         assert_eq!(decompressed.len() % 2, 0);
-        let mut merged = Vec::with_capacity(decompressed.len() / 2);
+        let mut merged = Vec::with_capacity(decompressed.len() / 2 + 1);
         let half = decompressed.len() / 2;
-        (0..decompressed.len()).for_each(|i| {
+        (0..half).for_each(|i| {
             let values = [decompressed[i], decompressed[half + i]];
             merged.push(merger(values));
         });
@@ -114,7 +114,18 @@ impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressor
 
 #[cfg(test)]
 mod tests {
-    use crate::{merger, splitter};
+    use crate::{merger, splitter, ChimpCompressorBatched64, ChimpDecompressorBatched64};
+    use compress_utils::context::Context;
+    use compress_utils::cpu_compress::{Compressor, Decompressor};
+    use compress_utils::general_utils::check_for_debug_mode;
+    use itertools::Itertools;
+    use pollster::FutureExt;
+    use std::sync::Arc;
+    use std::{env, fs};
+    use tracing_subscriber::util::SubscriberInitExt;
+    use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
+    use wgpu_compress_32_batched::ChimpCompressorBatched;
+    use wgpu_compress_32_batched::FinalizerEnum::GPU;
 
     #[test]
     fn splitter_merger() {
@@ -140,8 +151,66 @@ mod tests {
         assert_eq!(xm.len(), mx.len());
     }
     #[test]
-    fn eh() {
-        let u64 = Vec::<i32>::with_capacity(5);
-        assert_eq!(u64.len(), 5);
+    fn test_decompress_able_64() {
+        // let value_count = 0..(256 * 109);
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_32=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
+            .finish();
+        subscriber.init();
+
+        let mut values = get_values().expect("Could not read test values").to_vec();
+        values.extend(get_values().expect("Could not read test values").to_vec());
+        log::info!("Starting compression of {} values", values.len());
+        let context = Arc::new(
+            Context::initialize_with_adapter("NVIDIA".to_string())
+                .block_on()
+                .unwrap(),
+        );
+        let mut compressor = ChimpCompressorBatched64::new(false, context.clone(), GPU);
+        let mut compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
+
+        let decompressor = ChimpDecompressorBatched64::new(context.clone());
+        match decompressor.decompress(&mut compressed_values2).block_on() {
+            Ok(decompressed_values) => {
+                fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                fs::write("expected.log", values.iter().join("\n")).unwrap();
+                assert_eq!(decompressed_values, values)
+            }
+            Err(err) => {
+                eprintln!("Decompression error: {:?}", err);
+                panic!("{}", err);
+            }
+        }
+    }
+
+    fn get_third(field: &str) -> Option<String> {
+        field
+            .split(",")
+            .collect_vec()
+            .get(2)
+            .map(|it| it.to_string())
+    }
+    //noinspection ALL
+    fn get_values() -> anyhow::Result<Vec<f64>> {
+        let dir = env::current_dir()?;
+        let file_path = dir.parent().unwrap().join("city_temperature.csv");
+        let file_txt = fs::read_to_string(file_path)?;
+        let values = file_txt
+            .split("\n")
+            .map(get_third)
+            .filter(|p| p.is_some())
+            .map(|s| s.unwrap().parse::<f64>().unwrap())
+            .collect_vec()
+            .to_vec();
+        Ok(values)
     }
 }

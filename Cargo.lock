@@ -1344,6 +1344,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "wgpu_compress_64_batched"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bit-vec",
+ "bytemuck",
+ "compress_utils",
+ "itertools",
+ "log",
+ "pollster",
+ "thiserror",
+ "tracing-subscriber",
+ "wgpu",
+ "wgpu-types",
+ "wgpu_compress_32_batched",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
