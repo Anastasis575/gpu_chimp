@@ -1,25 +1,23 @@
 use async_trait::async_trait;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
+use wgpu_compress_32_batched::ChimpCompressorBatched;
+use wgpu_compress_64_batched::ChimpCompressorBatched64;
 
 pub enum ChimpCompressor64 {
-    // CPUCompressor(CPUCompressor)
-    // GPUCompressor
+    GPUBatchCompressor64(ChimpCompressorBatched64<ChimpCompressorBatched>),
 }
 
 #[async_trait]
 impl<T> Compressor<f64> for ChimpCompressor64 {
     async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
         match self {
-            _ => todo!("add in 64 bit support"),
+            ChimpCompressor64::GPUBatchCompressor64(compress) => compress.compress(vec),
         }
     }
 }
 
-// impl<T> From<T> for ChimpCompressor64<T>
-// where
-//     T: Compressor<f64>,
-// {
-//     fn from(value: T) -> Self {
-//         Self { compressor: value }
-//     }
-// }
+impl From<ChimpCompressorBatched64<ChimpCompressorBatched>> for ChimpCompressor64 {
+    fn from(value: ChimpCompressorBatched64<ChimpCompressorBatched>) -> Self {
+        ChimpCompressor64::GPUBatchCompressor64(value)
+    }
+}

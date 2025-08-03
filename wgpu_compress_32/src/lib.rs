@@ -64,7 +64,7 @@ impl ChimpCompressor {
 impl ChimpCompressor {
     pub async fn compute_s(&self, values: &mut [f32]) -> Result<Vec<S>, WgpuUtilsError> {
         // Create shader module and pipeline
-        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
+        let workgroup_size = format!("@workgroup_size({})", get_buffer_size().buffer_size());
         let temp = include_str!("shaders/compute_s.wgsl")
             .replace("#@workgroup_size(1)#", &workgroup_size)
             .to_string();
@@ -79,7 +79,7 @@ impl ChimpCompressor {
         let s_buffer_size = (size_of_s * bytes) as BufferAddress;
         info!("The S buffer size in bytes: {}", s_buffer_size);
 
-        let workgroup_count = values.len().div(get_buffer_size());
+        let workgroup_count = values.len().div(get_buffer_size().buffer_size());
         info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let mut padded_values = Vec::from(values);
@@ -157,7 +157,7 @@ impl ChimpCompressor {
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> Result<Vec<ChimpOutput>, WgpuUtilsError> {
-        let workgroup_size = format!("@workgroup_size({})", get_buffer_size());
+        let workgroup_size = format!("@workgroup_size({})", get_buffer_size().buffer_size());
         let temp = include_str!("shaders/chimp_compress.wgsl")
             .replace("#@workgroup_size(1)#", &workgroup_size)
             .to_string();
@@ -276,7 +276,7 @@ impl Default for ChimpCompressor {
 impl Compressor<f32> for ChimpCompressor {
     async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
         let mut padding = Padding(0);
-        let buffer_size = get_buffer_size();
+        let buffer_size = get_buffer_size().buffer_size();
 
         let mut values = initial_values.to_owned();
         values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);

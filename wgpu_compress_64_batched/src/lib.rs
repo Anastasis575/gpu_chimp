@@ -11,7 +11,7 @@ use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
 use wgpu_compress_32_batched::{ChimpCompressorBatched, FinalizerEnum};
 
 #[derive(Debug)]
-struct ChimpCompressorBatched64<T>
+pub struct ChimpCompressorBatched64<T>
 where
     T: Compressor<f32>,
 {
@@ -75,7 +75,7 @@ impl<T: Compressor<f32> + Send + Sync> Compressor<f64> for ChimpCompressorBatche
 }
 
 #[derive(Debug)]
-struct ChimpDecompressorBatched64<T>
+pub struct ChimpDecompressorBatched64<T>
 where
     T: Decompressor<f32>,
 {
@@ -114,7 +114,7 @@ impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressor
 
 #[cfg(test)]
 mod tests {
-    use crate::{merger, splitter, ChimpCompressorBatched64, ChimpDecompressorBatched64};
+    use crate::{ChimpCompressorBatched64, ChimpDecompressorBatched64, merger, splitter};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
@@ -123,9 +123,9 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::util::SubscriberInitExt;
-    use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
     use wgpu_compress_32_batched::ChimpCompressorBatched;
     use wgpu_compress_32_batched::FinalizerEnum::GPU;
+    use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
 
     #[test]
     fn splitter_merger() {

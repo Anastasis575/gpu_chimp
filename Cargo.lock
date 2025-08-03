@@ -106,6 +106,7 @@ dependencies = [
  "pollster",
  "wgpu_compress_32",
  "wgpu_compress_32_batched",
+ "wgpu_compress_64_batched",
 ]
 
 [[package]]

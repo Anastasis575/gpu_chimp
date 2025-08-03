@@ -443,47 +443,122 @@ pub mod general_utils {
         ($var:block,$total_millis:expr,$stage_name:expr,$stage_count:expr,$timeStruct:expr) => {
             info!("Starting {} #{}",$stage_name,$stage_count);
             info!("============================");
+
             let times = std::time::Instant::now();
+
             $var
+
             info!("============================");
             info!("Finished {} #{}",$stage_name,$stage_count);
+
             $total_millis += times.elapsed().as_millis();
+
             info!("Stage execution time: {}ms", times.elapsed().as_millis());
             info!("============================");
+
             *$timeStruct.times.entry($stage_name.to_string()).or_insert(0)+=times.elapsed().as_millis();
             $timeStruct.total_time +=times.elapsed().as_millis();
         }
     }
     #[macro_export]
     macro_rules! time_it {
+        ($var:block,$total_millis:expr,$stage_name:expr,$logger:expr) => {
+            info!("Starting {}",$stage_name);
+            info!("============================");
+
+            let times = std::time::Instant::now();
+
+            $var
+
+            info!("============================");
+            info!("Finished {}",$stage_name );
+
+            $total_millis += times.elapsed().as_millis();
+
+            info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            info!("Total time elapsed: {}ms", $total_millis);
+
+            info!("============================");
+            info!("============================");
+
+            $logger($total_millis)
+        };
         ($var:block,$total_millis:expr,$stage_name:expr) => {
-        info!("Starting {}",$stage_name);
-        info!("============================");
-        let times = std::time::Instant::now();
-        $var
-        info!("============================");
-        info!("Finished {}",$stage_name );
-        $total_millis += times.elapsed().as_millis();
-        info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        info!("Total time elapsed: {}ms", $total_millis);
-        info!("============================");
-        info!("============================");
+            info!("Starting {}",$stage_name);
+            info!("============================");
+
+            let times = std::time::Instant::now();
+
+            $var
+
+            info!("============================");
+            info!("Finished {}",$stage_name );
+
+            $total_millis += times.elapsed().as_millis();
+
+            info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            info!("Total time elapsed: {}ms", $total_millis);
+
+            info!("============================");
+            info!("============================");
+
         }
+
     }
+    /// Macro to execute a compute shader in a WGPU context.
+    ///
+    /// This macro simplifies the process of creating and executing a compute shader by encapsulating
+    /// the creation of a shader module, pipeline, bind group, and command encoder for dispatching
+    /// the compute work. It handles various aspects of WGPU utilities, such as binding resources and
+    /// dispatching compute workloads.
+    ///
+    /// # Parameters
+    ///
+    /// - `$context`: The WGPU `compress_utils::context::Context` to use.
+    ///
+    /// - `$shader_source`: The string source code for the compute shader. It should be in WGSL format.
+    ///
+    /// - `$buffers`: A list of GPU buffer (wrapped in `compress_utils::BufferWrapper`) objects to be used as bind group bindings in the compute shader. This
+    ///   will be passed to `wgpu_utils::assign_bind_groups` and `wgpu_utils::create_bind_group` to create
+    ///   the bind group layout and the actual bind group for the shader.
+    ///
+    /// - `$dispatch_size`: The number of workgroups to dispatch in the compute shader. The macro ensures
+    ///   that at least 1 workgroup is dispatched.
+    ///
+    /// # Usage
+    ///
+    /// ```rust
+    /// use std::sync::Arc;
+    /// use compress_utils::context::Context;
+    /// use compress_utils::{execute_compute_shader, BufferWrapper, WgpuGroupId};
+    /// async {
+    ///     let mut context = Arc::new(Context::initialize_default_adapter().await.unwrap()); //  WGPU context setup here
+    ///     let shader_source = include_str!("path_to_shader.wgsl");
+    ///     let uniform_bytes=0u32.to_be_bytes();
+    ///     let mut buffers = vec![BufferWrapper::uniform_with_content(context.device(),&uniform_bytes,WgpuGroupId::new(0,1),Some("uniform_buffer"))]; // Buffers to be used in the compute shader
+    ///     let dispatch_size = 64; // Number of workgroups to dispatch
+    ///
+    ///     execute_compute_shader!(&mut context, shader_source, &mut buffers, dispatch_size);
+    /// }
+    /// ```
     #[macro_export]
     macro_rules! execute_compute_shader {
         ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr) => {
             let compute_shader_module =
                 wgpu_utils::create_shader_module($context.device(), $shader_source)?;
+
             let binding_group_layout = wgpu_utils::assign_bind_groups($context.device(), $buffers);
+
             let compute_s_pipeline = wgpu_utils::create_compute_shader_pipeline(
                 $context.device(),
                 &compute_shader_module,
                 &binding_group_layout,
                 Some("Compute s pipeline"),
             )?;
+
             let binding_group =
                 wgpu_utils::create_bind_group($context, &binding_group_layout, $buffers);
+
             let mut s_encoder = $context
                 .device()
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -496,6 +571,7 @@ pub mod general_utils {
                 s_pass.set_bind_group(0, &binding_group, &[]);
                 s_pass.dispatch_workgroups(max($dispatch_size, 1) as u32, 1, 1)
             }
+
             $context.queue().submit(Some(s_encoder.finish()));
         };
     }
@@ -515,11 +591,11 @@ pub mod general_utils {
     }
 
     /// This function retrieves the buffer size for the application, factoring in environment-specific
-    /// configurations and performing necessary validations.
+    /// configurations and performing the necessary validations.
     ///
     /// # Details
     /// The function checks for an environment variable `CHIMP_BUFFER_SIZE` to determine the buffer size.
-    /// If the variable is not set or contains an invalid value, a default size of 64 bytes is used.
+    /// If the variable is not set or contains an invalid value, a default size of 256 values is used.
     /// The function ensures that the buffer size meets the following conditions:
     /// 1. The buffer size must be greater than 0.
     /// 2. The buffer size must be a multiple of 256.
@@ -542,31 +618,21 @@ pub mod general_utils {
     /// - Panics if the final buffer size is not greater than 0.
     /// - Panics if the final buffer size is not a multiple of 256.
     ///
-    /// # Logging
-    /// Logs warnings in the following cases:
-    /// - If `CHIMP_BUFFER_SIZE` is set but cannot be parsed as a valid `usize`.
-    /// - If `CHIMP_BUFFER_SIZE` is not set, and the default buffer size is used.
-    ///
     /// # Example
     /// ```rust
     /// use compress_utils::general_utils::get_buffer_size;
     /// let buffer_info = get_buffer_size();
     /// println!("Buffer Size: {}, Chunks: {}", buffer_info.buffer_size(), buffer_info.chunks());
     /// ```
-    ///
-    /// # Notes
-    /// This function is meant to establish a standardized buffer configuration across the application,
-    /// ensuring predictable behavior and compliance with system requirements.
-    /// ```
     pub fn get_buffer_size() -> ChimpBufferInfo {
         let default_buffer = 256usize;
         let final_buffer = match std::env::var("CHIMP_BUFFER_SIZE") {
             Ok(buffer_str) => buffer_str.parse::<usize>().unwrap_or_else(|_| {
-                warn!("Buffer size specified but not in usize format... defaulting to 32");
+                warn!("Buffer size specified but not in usize format... defaulting to 256");
                 default_buffer
             }),
             Err(_) => {
-                warn!("No explicit buffer size used... defaulting to 32");
+                warn!("No explicit buffer size used... defaulting to 256");
                 default_buffer
             }
         };

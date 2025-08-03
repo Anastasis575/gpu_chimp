@@ -359,7 +359,7 @@ impl CPUWrite {
         for _i in 1..self.size {
             // if we have not finished reading values from the uncompressed buffers
             if current_info.current_index >= (self.input.len() as u32 - 1u32)
-                && current_info.current_offset - 1u32 <= 0
+                && current_info.current_offset - 1u32 == 0
             {
                 break;
             }

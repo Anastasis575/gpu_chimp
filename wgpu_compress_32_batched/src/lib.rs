@@ -1,5 +1,5 @@
 mod compute_s_shader;
-mod cpu;
+pub mod cpu;
 pub mod decompressor;
 mod final_compress;
 mod finalize;
@@ -152,7 +152,6 @@ impl ChimpCompressorBatched {
     /// - If the result is less than `1`, it defaults to returning `1` to guarantee at least one iteration.
     fn process_iterations_for_max_buffer_size(&self, vec: &mut Vec<f32>) -> usize {
         const BUFFER_MAX_SIZE: usize = 134217728;
-        let size_of_s = size_of::<S>();
         (vec.len() * size_of::<S>()) / BUFFER_MAX_SIZE + 1 //the S buffers are the most costly to allocate
     }
     fn process_iterations_for_max_workgroup_count(&self, vec: &mut Vec<f32>) -> usize {
