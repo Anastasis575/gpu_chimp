@@ -8,10 +8,10 @@ pub enum ChimpCompressor64 {
 }
 
 #[async_trait]
-impl<T> Compressor<f64> for ChimpCompressor64 {
+impl Compressor<f64> for ChimpCompressor64 {
     async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
         match self {
-            ChimpCompressor64::GPUBatchCompressor64(compress) => compress.compress(vec),
+            ChimpCompressor64::GPUBatchCompressor64(compress) => compress.compress(vec).await,
         }
     }
 }

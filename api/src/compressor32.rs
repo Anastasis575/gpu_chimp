@@ -14,7 +14,7 @@ impl Compressor<f32> for ChimpCompressor32 {
         match self {
             // ChimpCompressor32::CPUCompressor32(compressor) => compressor(vec).await,
             // ChimpCompressor32::GPUCompressor32(compressor) => compressor(vec).await,
-            ChimpCompressor32::GPUBatchCompressor32(compressor) => compressor(vec).await,
+            ChimpCompressor32::GPUBatchCompressor32(compressor) => compressor.compress(vec).await,
         }
     }
 }

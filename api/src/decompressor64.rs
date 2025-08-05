@@ -10,11 +10,15 @@ pub enum ChimpDecompressor64 {
 }
 
 #[async_trait]
-impl<T> Decompressor<f64> for ChimpDecompressor64 {
+impl Decompressor<f64> for ChimpDecompressor64 {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
         match self {
-            ChimpDecompressor64::CPUDeCompressor(decompressor) => decompressor.decompress(vec),
-            ChimpDecompressor64::GPUDeCompressor(decompressor) => decompressor.decompress(vec),
+            ChimpDecompressor64::CPUDeCompressor(decompressor) => {
+                decompressor.decompress(vec).await
+            }
+            ChimpDecompressor64::GPUDeCompressor(decompressor) => {
+                decompressor.decompress(vec).await
+            }
         }
     }
 }

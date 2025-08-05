@@ -173,7 +173,7 @@ impl ChimpCompressor {
         let output_buffer_size = (size_of_output * s_values.len()) as BufferAddress;
         info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
-        let workgroup_count = input.len().div(get_buffer_size());
+        let workgroup_count = input.len().div(get_buffer_size().buffer_size());
         info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = BufferWrapper::stage_with_size(
             self.device(),
@@ -371,6 +371,6 @@ mod tests {
         let mut vec = BitVec::new();
         vec.push(true);
         vec.extend(to_bit_vec_no_padding(1));
-        assert_eq!(vec, 3.to_bit_vec());
+        assert_eq!(vec, 3u32.to_bit_vec());
     }
 }

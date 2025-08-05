@@ -77,57 +77,36 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let final_compress_impl = self.compute_final_compress_factory();
         let finalize_impl = self.compute_finalize_factory();
 
-        let mut output_vec = BitVec::new();
-        let iterations_to_fit_max_buffer_size = self.process_iterations_for_max_buffer_size(vec);
-        let iterations_to_fit_max_workgroup_count =
-            self.process_iterations_for_max_buffer_size(vec);
-        let actual_number_of_iterations = max(
-            iterations_to_fit_max_buffer_size,
-            iterations_to_fit_max_workgroup_count,
+        let output_vec: BitVec;
+        time_it!(
+            {
+                s_values = compute_s_impl.compute_s(&mut values).await?;
+            },
+            total_millis,
+            "s computation stage"
+        );
+        time_it!(
+            {
+                chimp_vec = final_compress_impl
+                    .final_compress(&mut values, &mut s_values, 0)
+                    .await?;
+            },
+            total_millis,
+            "final output stage"
+        );
+        time_it!(
+            {
+                output_vec = BitVec::from_bytes(
+                    finalize_impl
+                        .finalize(&mut chimp_vec, padding.0)
+                        .await?
+                        .as_slice(),
+                );
+            },
+            total_millis,
+            "final Result collection"
         );
 
-        let sub_set_size = vec.len() / actual_number_of_iterations;
-        for iteration in 0..actual_number_of_iterations {
-            let mut iteration_values = if iteration == actual_number_of_iterations - 1 {
-                vec[iteration * sub_set_size..]
-                    .iter()
-                    .map(|it| it.to_owned())
-                    .collect_vec()
-            } else {
-                vec[iteration * sub_set_size..(iteration + 1) * sub_set_size]
-                    .iter()
-                    .map(|it| it.to_owned())
-                    .collect_vec()
-            };
-            time_it!(
-                {
-                    s_values = compute_s_impl.compute_s(&mut iteration_values).await?;
-                },
-                total_millis,
-                "s computation stage"
-            );
-            time_it!(
-                {
-                    chimp_vec = final_compress_impl
-                        .final_compress(&mut iteration_values, &mut s_values, 0)
-                        .await?;
-                },
-                total_millis,
-                "final output stage"
-            );
-            time_it!(
-                {
-                    output_vec.extend(BitVec::from_bytes(
-                        finalize_impl
-                            .finalize(&mut chimp_vec, padding.0)
-                            .await?
-                            .as_slice(),
-                    ));
-                },
-                total_millis,
-                "final Result collection"
-            );
-        }
         Ok(output_vec.to_bytes())
     }
 }
@@ -204,10 +183,14 @@ mod tests {
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
     use cpu::decompressor;
+    use indicatif::ProgressIterator;
     use itertools::Itertools;
     use pollster::FutureExt;
+    use std::fs::OpenOptions;
+    use std::io::Write;
     use std::sync::Arc;
-    use std::{env, fs};
+    use std::{env, fs, os};
+    use tracing_subscriber::fmt::MakeWriter;
     use tracing_subscriber::util::SubscriberInitExt;
 
     fn get_third(field: &str) -> Option<String> {
@@ -218,9 +201,9 @@ mod tests {
             .map(|it| it.to_string())
     }
     //noinspection ALL
-    fn get_values() -> anyhow::Result<Vec<f32>> {
+    fn get_values(file_name: impl Into<String>) -> anyhow::Result<Vec<f32>> {
         let dir = env::current_dir()?;
-        let file_path = dir.parent().unwrap().join("city_temperature.csv");
+        let file_path = dir.parent().unwrap().join(file_name.into());
         let file_txt = fs::read_to_string(file_path)?;
         let values = file_txt
             .split("\n")
@@ -250,7 +233,9 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values").to_vec();
+        let mut values = get_values("city_temperature.csv")
+            .expect("Could not read test values")
+            .to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched::default();
         if check_for_debug_mode().expect("Could not read file system") {
@@ -258,21 +243,162 @@ mod tests {
         }
         let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
 
-        let mut values = get_values().expect("Could not read test values").to_vec();
+        let mut values = get_values("city_temperature.csv")
+            .expect("Could not read test values")
+            .to_vec();
         log::info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
-            finalizer: CPU,
+            finalizer: GPU,
             ..ChimpCompressorBatched::default()
         };
-        if check_for_debug_mode().expect("Could not read file system") {
-            compressor.set_debug(true);
-        }
+        // if check_for_debug_mode().expect("Could not read file system") {
+        //     compressor.set_debug(true);
+        // }
         let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
         assert_eq!(compressed_values2, compressed_values1);
     }
     //noinspection DuplicatedCode
     #[test]
     fn test_decompress_able() {
+        let context = Arc::new(
+            Context::initialize_with_adapter("NVIDIA".to_string())
+                .block_on()
+                .unwrap(),
+        );
+        env::set_var("CHIMP_BUFFER_SIZE", "1024".to_string());
+
+        for file_name in vec![
+            "city_temperature.csv",
+            "SSD_HDD_benchmarks.csv",
+            "Stocks-Germany-sample.txt",
+        ]
+        .into_iter()
+        {
+            println!("{file_name}");
+            let filename = format!("{}_chimp64_output.txt", &file_name);
+            if fs::exists(&filename).unwrap() {
+                fs::remove_file(&filename).unwrap();
+            }
+            let mut messages = Vec::<String>::with_capacity(30);
+            let mut values = get_values(file_name)
+                .expect("Could not read test values")
+                .to_vec();
+            for size_checkpoint in (1..11).progress() {
+                let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
+                log::info!("Starting compression of {} values", values.len());
+                let time = std::time::Instant::now();
+                let mut compressor = ChimpCompressorBatched::new(false, context.clone(), GPU);
+                let mut compressed_values2 =
+                    compressor.compress(&mut value_new).block_on().unwrap();
+                let compression_time = time.elapsed().as_millis();
+
+                const SIZE_IN_BYTE: usize = 8;
+                let compression_ratio =
+                    (compressed_values2.len() * SIZE_IN_BYTE) as f64 / value_new.len() as f64;
+                messages.push(format!(
+                    "Compression ratio {size_checkpoint}0% {compression_ratio}\n"
+                ));
+                messages.push(format!(
+                    "Encoding time {size_checkpoint}0%: {compression_time}\n"
+                ));
+
+                let time = std::time::Instant::now();
+                let decompressor = BatchedGPUDecompressor::new(context.clone());
+                match decompressor.decompress(&mut compressed_values2).block_on() {
+                    Ok(decompressed_values) => {
+                        let decompression_time = time.elapsed().as_millis();
+                        messages.push(format!(
+                            "Decoding time {size_checkpoint}0%: {decompression_time}\n"
+                        ));
+                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", values.iter().join("\n")).unwrap();
+                        assert_eq!(decompressed_values, value_new);
+                    }
+                    Err(err) => {
+                        eprintln!("Decompression error: {:?}", err);
+                        panic!("{}", err);
+                    }
+                }
+            }
+            let f = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(file_name)
+                .expect("temp");
+            let mut fw = f.make_writer();
+            for message in messages {
+                write!(fw, "{message}").unwrap()
+            }
+        }
+    }
+    #[test]
+    fn test_decompress_able_buffer() {
+        let context = Arc::new(
+            Context::initialize_with_adapter("NVIDIA".to_string())
+                .block_on()
+                .unwrap(),
+        );
+        for buffer_size in vec![256, 512, 1024, 2048].into_iter() {
+            let filename = format!("{}_chimp64_output.txt", buffer_size);
+            if fs::exists(&filename).unwrap() {
+                fs::remove_file(&filename).unwrap();
+            }
+            env::set_var("CHIMP_BUFFER_SIZE", buffer_size.to_string());
+            println!("Buffer size: {}", env::var("CHIMP_BUFFER_SIZE").unwrap());
+            let mut messages = Vec::<String>::with_capacity(30);
+            let mut values = get_values("city_temperature.csv")
+                .expect("Could not read test values")
+                .to_vec();
+            for size_checkpoint in (1..11).progress() {
+                let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
+                log::info!("Starting compression of {} values", values.len());
+                let time = std::time::Instant::now();
+                let mut compressor = ChimpCompressorBatched::new(false, context.clone(), GPU);
+                let mut compressed_values2 =
+                    compressor.compress(&mut value_new).block_on().unwrap();
+                let compression_time = time.elapsed().as_millis();
+
+                const SIZE_IN_BYTE: usize = 8;
+                let compression_ratio =
+                    (compressed_values2.len() * SIZE_IN_BYTE) as f64 / value_new.len() as f64;
+                messages.push(format!(
+                    "Compression ratio {size_checkpoint}0% {compression_ratio}\n"
+                ));
+                messages.push(format!(
+                    "Encoding time {size_checkpoint}0%: {compression_time}\n"
+                ));
+
+                let time = std::time::Instant::now();
+                let decompressor = BatchedGPUDecompressor::new(context.clone());
+                match decompressor.decompress(&mut compressed_values2).block_on() {
+                    Ok(decompressed_values) => {
+                        let decompression_time = time.elapsed().as_millis();
+                        messages.push(format!(
+                            "Decoding time {size_checkpoint}0%: {decompression_time}\n"
+                        ));
+                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", values.iter().join("\n")).unwrap();
+                        assert_eq!(decompressed_values, value_new);
+                    }
+                    Err(err) => {
+                        eprintln!("Decompression error: {:?}", err);
+                        panic!("{}", err);
+                    }
+                }
+            }
+            let f = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(filename)
+                .expect("temp");
+            let mut fw = f.make_writer();
+            for message in messages {
+                write!(fw, "{message}").unwrap()
+            }
+        }
+    }
+    #[test]
+    fn test_decompress_able_old() {
         // let value_count = 0..(256 * 109);
         let subscriber = tracing_subscriber::fmt()
             .compact()
@@ -288,8 +414,14 @@ mod tests {
             .finish();
         subscriber.init();
 
-        let mut values = get_values().expect("Could not read test values").to_vec();
-        values.extend(get_values().expect("Could not read test values").to_vec());
+        let mut values = get_values("city_temperature.csv")
+            .expect("Could not read test values")
+            .to_vec();
+        values.extend(
+            get_values("city_temperature.csv")
+                .expect("Could not read test values")
+                .to_vec(),
+        );
         log::info!("Starting compression of {} values", values.len());
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
@@ -305,12 +437,7 @@ mod tests {
             compressor.set_debug(true);
         }
         let mut compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-        // let compressed_values3 = compressor.compress(&mut values).block_on().unwrap();
 
-        // assert_eq!(compressed_values2, compressed_values3);
-
-        // let decompressor = DebugBatchDecompressorCpu {};
-        // let decompressor = BatchedDecompressorCpu {};
         let decompressor = BatchedGPUDecompressor::new(context);
         match decompressor.decompress(&mut compressed_values2).block_on() {
             Ok(decompressed_values) => {
