@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use thiserror::Error;
 use wgpu::{Adapter, Device, Queue, RequestDeviceError};
-use wgpu_types::Trace::Off;
 
 #[derive(Debug)]
 pub struct Context {
@@ -65,7 +64,6 @@ impl Context {
 
     async fn _initialize(device_name: Option<String>) -> Result<Self, UtilError> {
         let instance = wgpu::Instance::default();
-
         let adapter_list: Vec<Adapter>;
         let adapter = if let Some(device) = device_name {
             adapter_list = instance.enumerate_adapters(wgpu::Backends::all());
@@ -85,10 +83,10 @@ impl Context {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: wgpu::Features::default(),
+                required_features: wgpu::Features::SHADER_F64 | wgpu::Features::SHADER_INT64,
                 required_limits: wgpu::Limits::downlevel_defaults(),
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
-                trace: Off,
+                trace: wgpu_types::Trace::Off,
             })
             .await
             .map_err(|source| UtilError::UnbindableAdapter {

@@ -133,13 +133,13 @@ impl BatchedDecompressorCpu {
         time_it!(
             {
                 while current_index < vec.len() {
-                    let buffer_size = u8::from_be_bytes(
-                        vec[current_index..current_index + size_of::<u8>()]
+                    let buffer_size = u32::from_be_bytes(
+                        vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
                     ) as usize
                         + 1;
-                    current_index += size_of::<u8>();
+                    current_index += size_of::<u32>();
 
                     let size = u32::from_be_bytes(
                         vec[current_index..current_index + size_of::<u32>()]
@@ -186,13 +186,13 @@ impl Decompressor<f32> for DebugBatchDecompressorCpu {
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
-                    let buffer_value_count = u8::from_be_bytes(
-                        compressed_bytes_vec[current_index..current_index + size_of::<u8>()]
+                    let buffer_value_count = u32::from_be_bytes(
+                        compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
                     ) as usize
                         + 1;
-                    current_index += size_of::<u8>();
+                    current_index += size_of::<u32>();
 
                     let size_in_bytes = u32::from_be_bytes(
                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
