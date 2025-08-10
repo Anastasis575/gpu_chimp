@@ -2,7 +2,8 @@
 name = "wgpu_compress_64_batched"
 version = "0.1.0"
 edition = "2024"
-
+[profile.dev]
+opt-level = 0
 [dependencies]
 compress_utils = { path = "../compress_utils" }
 wgpu_compress_32_batched = { path = "../wgpu_compress_32_batched" }

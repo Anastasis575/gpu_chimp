@@ -4,11 +4,12 @@ use compress_utils::cpu_compress::{
     CompressionError, Compressor, DecompressionError, Decompressor,
 };
 use itertools::Itertools;
-use pollster::FutureExt;
-use std::string::ToString;
 use std::sync::Arc;
 use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
 use wgpu_compress_32_batched::{ChimpCompressorBatched, FinalizerEnum};
+pub mod actual64;
+mod compute_s_shader;
+mod final_compress;
 
 #[derive(Debug)]
 pub struct ChimpCompressorBatched64<T>
@@ -114,7 +115,8 @@ impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressor
 
 #[cfg(test)]
 mod tests {
-    use crate::{merger, splitter, ChimpCompressorBatched64, ChimpDecompressorBatched64};
+    use crate::{actual64, merger, splitter, ChimpCompressorBatched64, ChimpDecompressorBatched64};
+    use compress_utils::bit_utils::ToBitVec;
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use env::set_var;
@@ -126,8 +128,8 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
-    use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
-    use wgpu_compress_32_batched::ChimpCompressorBatched;
+    use wgpu_compress_32_batched::cpu;
+    use wgpu_compress_32_batched::cpu::decompressor::DebugBatchDecompressorCpu;
     use wgpu_compress_32_batched::FinalizerEnum::GPU;
 
     #[test]
@@ -160,8 +162,8 @@ mod tests {
                 .block_on()
                 .unwrap(),
         );
-        for buffer_size in vec![512, 1024, 2048].into_iter() {
-            let filename = format!("{}_chimp64_output.txt", buffer_size);
+        for buffer_size in vec![256].into_iter() {
+            let filename = format!("{buffer_size}_chimp64_output.txt");
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
@@ -173,7 +175,8 @@ mod tests {
             let mut values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
-            for size_checkpoint in (1..11).progress() {
+            // for size_checkpoint in (1..11).progress() {
+            for size_checkpoint in (2..3).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
@@ -193,7 +196,9 @@ mod tests {
                 ));
 
                 let time = std::time::Instant::now();
-                let decompressor = ChimpDecompressorBatched64::new(context.clone());
+                let decompressor = ChimpDecompressorBatched64 {
+                    decompressor32bits: DebugBatchDecompressorCpu::default(),
+                };
                 match decompressor.decompress(&mut compressed_values2).block_on() {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
@@ -201,11 +206,11 @@ mod tests {
                             "Decoding time {size_checkpoint}0%: {decompression_time}\n"
                         ));
                         fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
-                        eprintln!("Decompression error: {:?}", err);
+                        eprintln!("Decompression error: {err:?}");
                         panic!("{}", err);
                     }
                 }
@@ -242,7 +247,7 @@ mod tests {
                 .unwrap(),
         );
         for file_name in vec![
-            "city_temperature.csv",
+            // "city_temperature.csv",
             "SSD_HDD_benchmarks.csv",
             // "Stocks-Germany-sample.txt", Problematic
         ]
@@ -261,7 +266,7 @@ mod tests {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let mut compressor = ChimpCompressorBatched64::new(false, context.clone(), GPU);
+                let mut compressor = actual64::ChimpCompressorBatched64::new(context.clone());
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -277,7 +282,9 @@ mod tests {
                 ));
 
                 let time = std::time::Instant::now();
-                let decompressor = ChimpDecompressorBatched64::new(context.clone());
+                let decompressor = ChimpDecompressorBatched64 {
+                    decompressor32bits: cpu::decompressor::DebugBatchDecompressorCpu {},
+                };
                 match decompressor.decompress(&mut compressed_values2).block_on() {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
@@ -285,7 +292,7 @@ mod tests {
                             "Decoding time {size_checkpoint}0%: {decompression_time}\n"
                         ));
                         fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
@@ -326,5 +333,13 @@ mod tests {
             .collect_vec()
             .to_vec();
         Ok(values)
+    }
+
+    #[test]
+    fn test_bits() {
+        let value = 83.80002877190708f64.to_bits();
+        let value2 = 83.8f64.to_bits();
+        println!("{value:064b}");
+        println!("{value2:064b}");
     }
 }
