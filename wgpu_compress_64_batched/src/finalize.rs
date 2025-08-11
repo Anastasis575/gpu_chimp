@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
-use compress_utils::types::ChimpOutput;
-use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::types::ChimpOutput64;
+use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
@@ -16,7 +16,7 @@ use wgpu_types::BufferAddress;
 pub trait Finalize {
     async fn finalize(
         &self,
-        chimp_output: &mut Vec<ChimpOutput>,
+        chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
     ) -> Result<Vec<u8>>;
 }
@@ -30,17 +30,8 @@ impl Finalizer {
     pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
-
     pub fn context(&self) -> &Context {
-        self.context.as_ref()
-    }
-
-    pub fn device(&self) -> &wgpu::Device {
-        self.context.device()
-    }
-
-    pub fn queue(&self) -> &wgpu::Queue {
-        self.context.queue()
+        &self.context
     }
 }
 
@@ -48,10 +39,14 @@ impl Finalizer {
 impl Finalize for Finalizer {
     async fn finalize(
         &self,
-        chimp_input: &mut Vec<ChimpOutput>,
+        chimp_input: &mut Vec<ChimpOutput64>,
         padding: usize,
     ) -> Result<Vec<u8>> {
-        let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
+        let util_64 = include_str!("shaders/64_utils.wgsl");
+        let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
+            .replace("//#include(64_utils)", util_64)
+            .to_string();
+
         // let size_of_chimp = size_of::<ChimpOutput>();
         let size_of_out = size_of::<u32>();
 
@@ -66,37 +61,37 @@ impl Finalize for Finalizer {
         info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let out_stage_buffer = BufferWrapper::stage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             Some("Staging Output Buffer"),
         );
         let out_storage_buffer = BufferWrapper::storage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             WgpuGroupId::new(0, 0),
             Some("Staging Output Buffer"),
         );
         let in_storage_buffer = BufferWrapper::storage_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::cast_slice(chimp_input.as_slice()),
             WgpuGroupId::new(0, 1),
             Some("Staging Output Buffer"),
         );
         let size_uniform = BufferWrapper::uniform_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::bytes_of(&(ChimpBufferInfo::get().buffer_size() as u32)),
             WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
 
         let useful_byte_count_storage = BufferWrapper::storage_with_size(
-            self.device(),
+            self.context().device(),
             (workgroup_count * size_of::<u32>()) as BufferAddress,
             WgpuGroupId::new(0, 3),
             Some("Useful Storage Buffer"),
         );
         let useful_byte_count_staging = BufferWrapper::stage_with_size(
-            self.device(),
+            self.context().device(),
             (workgroup_count * size_of::<u32>()) as BufferAddress,
             Some("Useful Staging Buffer"),
         );
@@ -149,16 +144,9 @@ impl Finalize for Finalizer {
             final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
             final_vec.extend(temp_vec);
         }
-        if trace_steps().contains(&Step::Finalize) {
-            let trace_path = Step::Finalize.get_trace_file();
-            let mut trace_output = String::new();
-
-            final_vec
-                .iter()
-                .for_each(|it| trace_output.push_str(&format!("{:08b}", it)));
-
-            fs::write(&trace_path, trace_output)?;
-        }
+        step!(&Step::Finalize, {
+            final_vec.iter().map(|it| format!("{:08b}", it)).into_iter()
+        });
         Ok(final_vec)
     }
 }

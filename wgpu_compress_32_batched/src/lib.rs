@@ -16,10 +16,8 @@ use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{add_padding_to_fit_buffer_count, ChimpBufferInfo, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
-use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
-use std::cmp::max;
 use std::sync::Arc;
 
 #[derive(Debug)]

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput64, S};
-use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
 use std::fs;
@@ -20,12 +20,12 @@ pub trait FinalCompress: MaxGroupGnostic {
     ) -> anyhow::Result<Vec<ChimpOutput64>>;
 }
 
-pub struct FinalCompressImpl {
+pub struct FinalCompressImpl64 {
     context: Arc<Context>,
     // debug: bool,
 }
 
-impl FinalCompressImpl {
+impl FinalCompressImpl64 {
     pub fn new(context: Arc<Context>, _debug: bool) -> Self {
         Self {
             context,
@@ -36,33 +36,26 @@ impl FinalCompressImpl {
     pub fn context(&self) -> &Context {
         self.context.as_ref()
     }
-
-    // pub fn debug(&self) -> bool {
-    //     self.debug
-    // }
-    pub fn device(&self) -> &wgpu::Device {
-        self.context.device()
-    }
-    pub fn queue(&self) -> &wgpu::Queue {
-        self.context.queue()
-    }
 }
 
-impl MaxGroupGnostic for FinalCompressImpl {
+impl MaxGroupGnostic for FinalCompressImpl64 {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(ChimpBufferInfo::get().buffer_size())
     }
 }
 
 #[async_trait]
-impl FinalCompress for FinalCompressImpl {
+impl FinalCompress for FinalCompressImpl64 {
     async fn final_compress(
         &self,
         input: &mut Vec<f64>,
         s_values: &mut Vec<S>,
         padding: usize,
     ) -> anyhow::Result<Vec<ChimpOutput64>> {
-        let temp = include_str!("shaders/chimp_compress.wgsl").to_string();
+        let utils_64 = include_str!("shaders/64_utils.wgsl");
+        let temp = include_str!("shaders/chimp_compress.wgsl")
+            .replace("//#include(64_utils)", utils_64)
+            .to_string();
         let size_of_s = size_of::<S>();
         let size_of_output = size_of::<ChimpOutput64>();
         let input_length = input.len();
@@ -77,31 +70,31 @@ impl FinalCompress for FinalCompressImpl {
         let workgroup_count = self.get_max_number_of_groups(input.len());
         info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = BufferWrapper::stage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             Some("Staging S Buffer"),
         );
         let output_storage_buffer = BufferWrapper::storage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             WgpuGroupId::new(0, 2),
             Some("Storage Output Buffer"),
         );
         let s_storage_buffer = BufferWrapper::storage_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::cast_slice(s_values.as_slice()),
             WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
         input.push(0f64);
         let input_storage_buffer = BufferWrapper::storage_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::cast_slice(input.as_slice()),
             WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
         let chunks_buffer = BufferWrapper::uniform_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::bytes_of(&ChimpBufferInfo::get().chunks()),
             WgpuGroupId::new(0, 3),
             Some("Chunks Buffer"),
@@ -139,16 +132,13 @@ impl FinalCompress for FinalCompressImpl {
 
             final_output[index] = c;
         }
-        if trace_steps().contains(&Step::Compress) {
-            let trace_path = Step::Compress.get_trace_file();
-            let mut trace_output = String::new();
-
-            final_output.iter().enumerate().for_each(|it| {
-                trace_output.push_str(&format!("{}:{}\n", it.0, it.1));
-            });
-
-            fs::write(&trace_path, trace_output)?;
-        }
+        step!(Step::Compress, {
+            final_output
+                .iter()
+                .enumerate()
+                .map(|it| format!("{}:{}\n", it.0, it.1))
+                .into_iter()
+        });
         Ok(final_output)
     }
 }

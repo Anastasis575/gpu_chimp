@@ -36,16 +36,6 @@ impl FinalCompressImpl {
     pub fn context(&self) -> &Context {
         self.context.as_ref()
     }
-
-    // pub fn debug(&self) -> bool {
-    //     self.debug
-    // }
-    pub fn device(&self) -> &wgpu::Device {
-        self.context.device()
-    }
-    pub fn queue(&self) -> &wgpu::Queue {
-        self.context.queue()
-    }
 }
 
 impl MaxGroupGnostic for FinalCompressImpl {
@@ -77,31 +67,31 @@ impl FinalCompress for FinalCompressImpl {
         let workgroup_count = self.get_max_number_of_groups(input.len());
         info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = BufferWrapper::stage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             Some("Staging S Buffer"),
         );
         let output_storage_buffer = BufferWrapper::storage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             WgpuGroupId::new(0, 2),
             Some("Storage Output Buffer"),
         );
         let s_storage_buffer = BufferWrapper::storage_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::cast_slice(s_values.as_slice()),
             WgpuGroupId::new(0, 0),
             Some("Storage S Buffer"),
         );
         input.push(0f32);
         let input_storage_buffer = BufferWrapper::storage_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::cast_slice(input.as_slice()),
             WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
         let chunks_buffer = BufferWrapper::uniform_with_content(
-            self.device(),
+            self.context().device(),
             bytemuck::bytes_of(&ChimpBufferInfo::get().chunks()),
             WgpuGroupId::new(0, 3),
             Some("Chunks Buffer"),

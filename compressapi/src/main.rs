@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use compress_utils::bit_utils::to_bit_vec;
+use compress_utils::bit_utils::ToBitVec;
 use compress_utils::cpu_compress::{
     CPUCompressor, Compressor, Decompressor, TimedCompressor, TimedDecompressor,
 };
@@ -17,7 +17,7 @@ pub async fn main() -> Result<()> {
 
     if check_for_debug_mode().expect("Could not read file system") {
         for (i, value) in values.iter().enumerate() {
-            info!("{}:{} - {}", i, value, to_bit_vec(value.to_bits()));
+            info!("{}:{} - {}", i, value, value.to_bits().to_bit_vec());
         }
     }
 

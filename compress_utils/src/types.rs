@@ -58,8 +58,7 @@ impl fmt::Display for ChimpOutput {
     }
 }
 
-
-#[repr(C,packed)]
+#[repr(C, packed)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput64 {
     upper_bits: u32,

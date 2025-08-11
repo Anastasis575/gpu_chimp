@@ -27,6 +27,8 @@ struct CurrentInfo{
     current_offset:u32,
 }
 
+//#include(64_utils)
+
 fn write(input_idx:u32,output_idx:u32){
     //Index of the byte we are in
     var current_index=input_idx+1u;

@@ -11,7 +11,6 @@ use log::trace;
 use std::cmp::{max, min};
 use std::fs;
 use thiserror::Error;
-use wgpu_types::BufferAddress;
 
 #[derive(Debug, Error)]
 pub enum BatchedDecompressorError {

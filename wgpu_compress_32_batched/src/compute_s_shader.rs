@@ -1,9 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{
-    get_buffer_size, trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step,
-};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::S;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
@@ -33,12 +31,16 @@ impl ComputeSImpl {
     pub fn device(&self) -> &wgpu::Device {
         self.context.device()
     }
+
+    #[allow(dead_code)]
     pub fn queue(&self) -> &wgpu::Queue {
         self.context.queue()
     }
+    #[allow(dead_code)]
     pub fn adapter(&self) -> &wgpu::Adapter {
         self.context.adapter()
     }
+    #[allow(dead_code)]
     pub fn max_work_group_count(&self) -> usize {
         self.context.get_max_workgroup_size()
     }

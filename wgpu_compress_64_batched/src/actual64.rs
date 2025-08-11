@@ -1,13 +1,13 @@
-use crate::actual64;
 use crate::compute_s_shader::{ComputeS, ComputeSImpl};
-use crate::final_compress::{FinalCompress, FinalCompressImpl};
+use crate::final_compress::{FinalCompress, FinalCompressImpl64};
+use crate::finalize::{Finalize, Finalizer};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{add_padding_to_fit_buffer_count, ChimpBufferInfo, Padding};
+use compress_utils::general_utils::{ChimpBufferInfo, Padding};
 use compress_utils::time_it;
-use compress_utils::types::{ChimpOutput, ChimpOutput64, S};
+use compress_utils::types::{ChimpOutput64, S};
 use log::info;
 use pollster::FutureExt;
 use std::ops::Div;
@@ -54,7 +54,7 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
 
         let compute_s_impl = self.compute_s_factory();
         let final_compress_impl = self.compute_final_compress_factory();
-        // let finalize_impl = self.compute_finalize_factory();
+        let finalize_impl = self.compute_finalize_factory();
 
         let output_vec: BitVec;
         time_it!(
@@ -73,19 +73,18 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
             total_millis,
             "final output stage"
         );
-        // time_it!(
-        //     {
-        //         output_vec = BitVec::from_bytes(
-        //             finalize_impl
-        //                 .finalize(&mut chimp_vec, padding.0)
-        //                 .await?
-        //                 .as_slice(),
-        //         );
-        //     },
-        //     total_millis,
-        //     "final Result collection"
-        // );
-        let output_vec = BitVec::new();
+        time_it!(
+            {
+                output_vec = BitVec::from_bytes(
+                    finalize_impl
+                        .finalize(&mut chimp_vec, padding.0)
+                        .await?
+                        .as_slice(),
+                );
+            },
+            total_millis,
+            "final Result collection"
+        );
         Ok(output_vec.to_bytes())
     }
 }
@@ -94,7 +93,10 @@ impl ChimpCompressorBatched64 {
         ComputeSImpl::new(self.context.clone())
     }
     fn compute_final_compress_factory(&self) -> impl FinalCompress {
-        FinalCompressImpl::new(self.context.clone(), false)
+        FinalCompressImpl64::new(self.context.clone(), false)
+    }
+    fn compute_finalize_factory(&self) -> impl Finalize {
+        Finalizer::new(self.context.clone())
     }
     pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
         Self {

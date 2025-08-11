@@ -1,4 +1,3 @@
-use crate::FinalizerEnum;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};

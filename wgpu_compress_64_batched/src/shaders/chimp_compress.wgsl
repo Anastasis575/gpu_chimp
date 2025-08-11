@@ -5,12 +5,6 @@ struct Ss{
     equal:u32,
 }
 
-struct Output{
-    upper_bits:u32,
-    lower_bits:u64, //because there is a scenario where 32 bits are not enough to reprisent the outcome
-    useful_size:u32
-}
-
 @group(0)
 @binding(0)
 var<storage, read_write> s_store: array<Ss>; // this is used as both input and output for convenience
@@ -21,17 +15,18 @@ var<storage, read_write> in: array<f64>; // this is used as both input and outpu
 
 @group(0)
 @binding(2)
-var<storage, read_write> out: array<Output>; // this is used as both input and output for convenience
+var<storage, read_write> out: array<Output64>; // this is used as both input and output for convenience
 @group(0)
 @binding(3)
 var<uniform> chunks: u32; // this is used as both input and output for convenience
 
-struct OutputTemp{
-    x:u32,
-    y:u64
-}
 
-fn compress(v:f64,s:Ss,v_prev:f64,s_prev:Ss) -> Output{
+//#include(64_utils)
+
+
+
+
+fn compress(v:f64,s:Ss,v_prev:f64,s_prev:Ss) -> Output64{
 
     //Conditions
     var trail_gt_6=u32(s.trailing>6);
@@ -83,45 +78,20 @@ fn compress(v:f64,s:Ss,v_prev:f64,s_prev:Ss) -> Output{
     case_4.y+=extractBits(xorred,0u,u32(64-s.leading));
     var case_4_bit_count:u32=2+5+64 - u32(s.leading);
 
-    var final_output_i32=vec_condition(s.equal)*case_1;
-    final_output_i32+= vec_condition(trail_gt_6*not_equal)*case_2;
-    final_output_i32+= vec_condition(trail_le_6*pr_lead_eq_lead)*case_3;
-    final_output_i32+=vec_condition(trail_le_6*pr_lead_ne_lead)*case_4;
-    var final_output=OutputTemp(u32(final_output_i32.x),u32(final_output_i32.y));
+    var final_output_i32=apply_condition(case_1,s.equal);
+    
+    final_output_i32= add(final_output_i32,apply_condition(case_2,trail_gt_6*not_equal));
+    
+    final_output_i32=add(final_output_i32,apply_condition(case_3,trail_le_6*pr_lead_eq_lead));
+    
+    final_output_i32=add(final_output_i32,apply_condition(case_4,trail_le_6*pr_lead_ne_lead));
+    
+    var final_output=OutputTemp(u32(final_output_i32.x),u64(final_output_i32.y));
 
     var final_bit_count=s.equal*case_1_bit_count+ (trail_gt_6*not_equal)*case_2_bit_count +(trail_le_6*pr_lead_eq_lead)*case_3_bit_count +(trail_le_6*pr_lead_ne_lead)*case_4_bit_count;
-    return Output(final_output.upper_bits,final_output.low_bits,u32(final_bit_count));
+    return Output64(final_output.x,final_output.y,u32(final_bit_count));
 }
 
-fn vec_condition(condition:u32)->OutputTemp{
-    return OutputTemp(condition,condition);
-}
-
-fn pseudo_u64_shift(output:OutputTemp,number:u32)->OutputTemp{
-   var first_number_bits:u32=u32(extractBits(output.y,64-number,number));
-   var new_output=OutputTemp(output.x,output.y);
-   var check = u32(number < 64);
-   new_output.x = check*(output.x << number);
-   new_output.x += first_number_bits;
-   new_output.y = check*(output.y<<number);
-
-   return new_output;
-}
-
-
-fn extract_bits(inputbits: u64, start_index: u32, bit_count: u32) -> u32 {
-    var input_bits = input_bits;
-    // assert!(start_index + bit_count > 32);
-    let u32_max=0xFFFFFFFF;
-    let u64_max= u64(u32_max)<<32 +u32_max;
-    let end_index:u64 = min(start_index + bit_count, 64);
-    let low_bound:u64 = u64_max << start_index;
-    let high_bound:u64 = u64_max >> (64 - end_index);
-
-    input_bits = input_bits & low_bound;
-    input_bits = input_bits & high_bound;
-    return input_bits >> start_index;
-}
 @compute
 @workgroup_size(256)
 fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation_id) invocation_id: vec3<u32>) {

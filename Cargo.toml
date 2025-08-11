@@ -4,10 +4,10 @@ members = [
     "wgpu_compress_32",
     "wgpu_compress_32_batched",
     "wgpu_compress_64_batched",
-    "compressapi",
     "api"
 ]
-resolver = "2"
+resolver = "3"
+
 
 [workspace.dependencies]
 wgpu = { version = "26.0.1", default-features = false, features = [

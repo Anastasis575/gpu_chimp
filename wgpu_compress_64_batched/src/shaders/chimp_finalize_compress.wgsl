@@ -12,13 +12,9 @@ var<storage, read_write> out: array<u64>; // this is used as both input and outp
 
 @group(0)
 @binding(1)
-var<storage, read_write> in: array<Output>; // this is used as both input and output for convenience
-struct Output{
-    upper_bits:u32,
-    lower_bits:u64,//because there is a scenario where 32 bits are not enough to reprisent the outcome
-    bit_count:u32
-}
+var<storage, read_write> in: array<Output64>; // this is used as both input and output for convenience
 
+//#include(64_utils)
 
 
 
@@ -40,7 +36,7 @@ fn get_insert_index(bits_rest_to_write: u32, writeable_output_remaining: u32) ->
     );
 }
 
-fn write(idx:u32)->u32{
+fn write(idx:u32)->u64{
     var current_i=idx+1u;
     var current_i_bits_left=32u;
     
@@ -52,7 +48,7 @@ fn write(idx:u32)->u32{
 
     out[idx]=in[idx].lower_bits;
     for (var i: u32 = idx+1u; i < idx+size; i++) {
-        var chimp:Output=in[i];
+        var chimp:Output64=in[i];
         var overflow_bits=i32(chimp.bit_count) - 32;
         
         var first_add=0u;
@@ -62,17 +58,17 @@ fn write(idx:u32)->u32{
         var insert_index:u32=0u;
         var remaining:u32=0u;
          
-        var bits_to_add:u32=0u;
+        var bits_to_add:u64=0;
         
-        var rest_bits:u32=0u;
+        var rest_bits:u64=u64(0);
          
         if overflow_bits>0 {
             fitting = get_fitting(u32(overflow_bits), current_i_bits_left);
             insert_index = get_insert_index(u32(overflow_bits), current_i_bits_left);
             remaining = get_remaining(u32(overflow_bits), current_i_bits_left);
             
-            bits_to_add=extractBits(chimp.upper_bits,u32(overflow_bits-i32(fitting)),fitting);
-            out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+            bits_to_add=extract_bits(chimp.upper_bits,u32(overflow_bits-i32(fitting)),fitting);
+            out[current_i]=insert_bits(out[current_i],bits_to_add,insert_index,fitting);
 
             if current_i_bits_left<=fitting{
                 current_i += 1u;
@@ -84,8 +80,8 @@ fn write(idx:u32)->u32{
                 fitting = get_fitting(remaining, current_i_bits_left);
                 insert_index = get_insert_index(remaining, current_i_bits_left);
                 
-                bits_to_add=extractBits(chimp.upper_bits,0u,fitting);
-                out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+                bits_to_add=extract_bits(chimp.upper_bits,0u,fitting);
+                out[current_i]=insert_bits(out[current_i],bits_to_add,insert_index,fitting);
                 
                 if current_i_bits_left<=fitting{
                     current_i += 1;
@@ -100,8 +96,8 @@ fn write(idx:u32)->u32{
         insert_index=get_insert_index(rest_bits, current_i_bits_left);
         remaining=get_remaining(rest_bits, current_i_bits_left);
         
-        bits_to_add=extractBits(chimp.lower_bits, u32(rest_bits - fitting), fitting);
-        out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+        bits_to_add=extract_bits(chimp.lower_bits, u32(rest_bits - fitting), fitting);
+        out[current_i]=insert_bits(out[current_i],bits_to_add,insert_index,fitting);
         
         if current_i_bits_left<=fitting{
             current_i += 1u;
@@ -112,8 +108,8 @@ fn write(idx:u32)->u32{
         if remaining>0{
              fitting = get_fitting(remaining, current_i_bits_left);
              insert_index = get_insert_index(remaining, current_i_bits_left);
-             bits_to_add = extractBits(chimp.lower_bits, 0u, fitting);
-             out[current_i]=insertBits(out[current_i],bits_to_add,insert_index,fitting);
+             bits_to_add = extract_bits(chimp.lower_bits, 0u, fitting);
+             out[current_i]=insert_bits(out[current_i],bits_to_add,insert_index,fitting);
              if current_i_bits_left <= fitting {
                 current_i+= 1u;
                 current_i_bits_left = 32u;
@@ -124,19 +120,6 @@ fn write(idx:u32)->u32{
     }
     return current_i;
 
-}
-fn extract_bits(inputbits: u64, start_index: u32, bit_count: u32) -> u32 {
-    var input_bits = input_bits;
-    // assert!(start_index + bit_count > 32);
-    let u32_max=0xFFFFFFFF;
-    let u64_max= u64(u32_max)<<32 +u32_max;
-    let end_index:u64 = min(start_index + bit_count, 64);
-    let low_bound:u64 = u64_max << start_index;
-    let high_bound:u64 = u64_max >> (64 - end_index);
-
-    input_bits = input_bits & low_bound;
-    input_bits = input_bits & high_bound;
-    return input_bits >> start_index;
 }
 
 @compute

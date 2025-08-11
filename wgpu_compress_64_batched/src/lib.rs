@@ -9,7 +9,9 @@ use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
 use wgpu_compress_32_batched::{ChimpCompressorBatched, FinalizerEnum};
 pub mod actual64;
 mod compute_s_shader;
+pub mod decompressor;
 mod final_compress;
+mod finalize;
 
 #[derive(Debug)]
 pub struct ChimpCompressorBatched64<T>
@@ -115,8 +117,10 @@ impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressor
 
 #[cfg(test)]
 mod tests {
-    use crate::{actual64, merger, splitter, ChimpCompressorBatched64, ChimpDecompressorBatched64};
-    use compress_utils::bit_utils::ToBitVec;
+    use crate::{
+        actual64, decompressor, merger, splitter, ChimpCompressorBatched64,
+        ChimpDecompressorBatched64,
+    };
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use env::set_var;
@@ -172,7 +176,7 @@ mod tests {
             }
             println!("Buffer size: {}", env::var("CHIMP_BUFFER_SIZE").unwrap());
             let mut messages = Vec::<String>::with_capacity(30);
-            let mut values = get_values("city_temperature.csv")
+            let values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
             // for size_checkpoint in (1..11).progress() {
@@ -180,7 +184,7 @@ mod tests {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let mut compressor = ChimpCompressorBatched64::new(false, context.clone(), GPU);
+                let compressor = ChimpCompressorBatched64::new(false, context.clone(), GPU);
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -259,14 +263,14 @@ mod tests {
                 fs::remove_file(&filename).unwrap();
             }
             let mut messages = Vec::<String>::with_capacity(30);
-            let mut values = get_values(file_name)
+            let values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
             for size_checkpoint in (1..11).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let mut compressor = actual64::ChimpCompressorBatched64::new(context.clone());
+                let compressor = actual64::ChimpCompressorBatched64::new(context.clone());
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -282,9 +286,7 @@ mod tests {
                 ));
 
                 let time = std::time::Instant::now();
-                let decompressor = ChimpDecompressorBatched64 {
-                    decompressor32bits: cpu::decompressor::DebugBatchDecompressorCpu {},
-                };
+                let decompressor = decompressor::BatchedGPUDecompressor::new(context.clone());
                 match decompressor.decompress(&mut compressed_values2).block_on() {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();

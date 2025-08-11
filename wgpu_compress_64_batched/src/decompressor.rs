@@ -3,7 +3,9 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
-use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{
+    execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
+};
 use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
@@ -14,11 +16,11 @@ use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-impl Decompressor<f32> for BatchedGPUDecompressor {
+impl Decompressor<f64> for BatchedGPUDecompressor {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
-    ) -> Result<Vec<f32>, DecompressionError> {
+    ) -> Result<Vec<f64>, DecompressionError> {
         let mut current_index = 0usize;
         let uncompressed_values;
         let mut total_millis = 0;
@@ -104,7 +106,7 @@ impl BatchedGPUDecompressor {
         compressed_value_slice: &[u32],
         input_indexes: &[u32],
         buffer_value_count: usize,
-    ) -> Result<Vec<f32>, DecompressionError> {
+    ) -> Result<Vec<f64>, DecompressionError> {
         let shader_code = include_str!("shaders/decompress.wgsl");
 
         //how many buffers fit into the GPU
@@ -114,7 +116,7 @@ impl BatchedGPUDecompressor {
         let iterator_count = max((input_indexes.len() - 1) / workgroup_count, 1);
 
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
-        let mut result = Vec::new();
+        let mut result = Vec::<f64>::new();
         info!("The wgpu workgroup size: {}", &workgroup_count);
 
         for iteration in 0..iterator_count {
@@ -201,7 +203,7 @@ impl BatchedGPUDecompressor {
                 iteration_input_indexes.len() - 1
             );
 
-            let output = wgpu_utils::get_s_output::<f32>(
+            let output = wgpu_utils::get_s_output::<f64>(
                 self.context(),
                 out_storage_buffer.buffer(),
                 ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f32>())
@@ -212,17 +214,9 @@ impl BatchedGPUDecompressor {
             result.extend(output);
         }
         info!("Output result size: {}", result.len());
-        if trace_steps().contains(&Step::Decompress) {
-            let trace_path = Step::Decompress.get_trace_file();
-            let mut trace_output = String::new();
-
-            result
-                .iter()
-                .for_each(|it| trace_output.push_str(it.to_string().as_str()));
-
-            fs::write(&trace_path, trace_output)
-                .map_err(|it| DecompressionError::FromBaseAnyhowError(anyhow::anyhow!(it)))?;
-        }
+        step!(Step::Decompress, {
+            result.iter().map(|it| it.to_string()).into_iter()
+        });
         Ok(result)
     }
 

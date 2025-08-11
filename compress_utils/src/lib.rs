@@ -183,8 +183,8 @@ pub mod wgpu_utils {
     pub fn assign_bind_groups(device: &Device, bindings: Vec<&BufferWrapper>) -> BindGroupLayout {
         let mut binding_group_layout_entries = Vec::<wgpu::BindGroupLayoutEntry>::new();
         for binding in bindings {
-            match binding {
-                &BufferWrapper::StorageBuffer { binding, .. } => {
+            match *binding {
+                BufferWrapper::StorageBuffer { binding, .. } => {
                     binding_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
                         binding,
                         visibility: ShaderStages::COMPUTE,
@@ -196,8 +196,8 @@ pub mod wgpu_utils {
                         count: None,
                     });
                 }
-                &BufferWrapper::StagingBuffer { .. } => {}
-                &BufferWrapper::Uniform { binding, .. } => {
+                BufferWrapper::StagingBuffer { .. } => {}
+                BufferWrapper::Uniform { binding, .. } => {
                     binding_group_layout_entries.push(wgpu::BindGroupLayoutEntry {
                         binding,
                         visibility: ShaderStages::COMPUTE,
@@ -309,11 +309,12 @@ pub mod bit_utils {
         fn to_bit_vec(self) -> BitVec;
     }
 
-    impl<T: Copy> ToBitVec for &T {
-        fn to_bit_vec(self) -> BitVec {
-            self.to_owned().to_bit_vec()
-        }
-    }
+    // impl<T: Copy> ToBitVec for &T {
+    //     fn to_bit_vec(self) -> BitVec {
+    //         let x:T=self.to_owned();
+    //         x.to_bit_vec()
+    //     }
+    // }
     impl ToBitVec for u32 {
         fn to_bit_vec(self) -> BitVec {
             let mut bit_vec = BitVec::new();
@@ -437,7 +438,19 @@ pub mod general_utils {
         }
         values
     }
+    #[macro_export]
+    macro_rules! step {
+        ($step:expr,$writer_body:block) => {
+            if trace_steps().contains(&$step) {
+                let trace_path = $step.get_trace_file();
+                let mut trace_output = String::new();
 
+                $writer_body.for_each(|it| trace_output.push_str(it.as_str()));
+
+                fs::write(&trace_path, trace_output).expect("Could not write step file");
+            }
+        };
+    }
     #[macro_export]
     macro_rules! time_it_compound {
         ($var:block,$total_millis:expr,$stage_name:expr,$stage_count:expr,$timeStruct:expr) => {

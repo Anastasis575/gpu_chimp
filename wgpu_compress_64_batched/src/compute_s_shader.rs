@@ -1,11 +1,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{
-    get_buffer_size, trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step,
-};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::S;
-use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use log::info;
 use std::cmp::max;
 use std::fs;
@@ -118,16 +116,9 @@ impl ComputeS for ComputeSImpl {
         )
         .await?;
         info!("Output result size: {}", output.len());
-        if trace_steps().contains(&Step::ComputeS) {
-            let trace_path = Step::ComputeS.get_trace_file();
-            let mut trace_output = String::new();
-
-            output
-                .iter()
-                .for_each(|it| trace_output.push_str(it.to_string().as_str()));
-
-            fs::write(&trace_path, trace_output)?;
-        }
+        step!(Step::ComputeS, {
+            output.iter().map(|it| it.to_string()).into_iter()
+        });
         Ok(output)
     }
 }
