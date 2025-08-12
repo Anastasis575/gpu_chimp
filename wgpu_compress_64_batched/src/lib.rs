@@ -9,6 +9,7 @@ use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
 use wgpu_compress_32_batched::{ChimpCompressorBatched, FinalizerEnum};
 pub mod actual64;
 mod compute_s_shader;
+mod cpu;
 pub mod decompressor;
 mod final_compress;
 mod finalize;
@@ -132,9 +133,8 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
-    use wgpu_compress_32_batched::cpu;
     use wgpu_compress_32_batched::cpu::decompressor::DebugBatchDecompressorCpu;
-    use wgpu_compress_32_batched::FinalizerEnum::GPU;
+    use wgpu_compress_32_batched::FinalizerEnum::{CPU, GPU};
 
     #[test]
     fn splitter_merger() {
@@ -268,9 +268,16 @@ mod tests {
                 .to_vec();
             for size_checkpoint in (1..11).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
+
+                let s = value_new
+                    .iter()
+                    .map(|it| format!("{:064b}", it.to_bits()))
+                    .join("\n");
+                fs::write("values", s).unwrap();
+
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let compressor = actual64::ChimpCompressorBatched64::new(context.clone());
+                let compressor = actual64::ChimpCompressorBatched64::new(context.clone()); //.with_device(CPU);
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();

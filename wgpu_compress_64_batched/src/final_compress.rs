@@ -122,7 +122,7 @@ impl FinalCompress for FinalCompressImpl64 {
 
         let length_without_padding = output.len() - padding - 1;
 
-        let mut final_output = Vec::<ChimpOutput64>::new();
+        let mut final_output = Vec::<ChimpOutput64>::with_capacity(length_without_padding);
         final_output.extend(output[0..length_without_padding].to_vec());
         for i in 0..workgroup_count {
             let index = i * ChimpBufferInfo::get().buffer_size();

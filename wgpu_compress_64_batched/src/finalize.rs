@@ -22,11 +22,11 @@ pub trait Finalize {
 }
 
 #[derive(Debug)]
-pub struct Finalizer {
+pub struct Finalizer64 {
     context: Arc<Context>,
 }
 
-impl Finalizer {
+impl Finalizer64 {
     pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
@@ -36,7 +36,7 @@ impl Finalizer {
 }
 
 #[async_trait]
-impl Finalize for Finalizer {
+impl Finalize for Finalizer64 {
     async fn finalize(
         &self,
         chimp_input: &mut Vec<ChimpOutput64>,

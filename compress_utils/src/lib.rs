@@ -327,7 +327,7 @@ pub mod bit_utils {
     impl ToBitVec for u64 {
         fn to_bit_vec(self) -> BitVec {
             let mut bit_vec = BitVec::new();
-            for i in (0..32).rev() {
+            for i in (0..64).rev() {
                 bit_vec.push((self >> i) % 2 == 1);
             }
             bit_vec
@@ -737,6 +737,7 @@ pub mod general_utils {
                 "compute_s" => Ok(Step::ComputeS),
                 "compress" => Ok(Step::Compress),
                 "finalize" => Ok(Step::Finalize),
+                "decompress" => Ok(Step::Decompress),
                 _ => Err(anyhow::anyhow!("Unknown step")),
             }
         }
@@ -745,7 +746,7 @@ pub mod general_utils {
         let mut default_options = HashSet::new();
         if let Ok(trace_options) = std::env::var("CHIMP_TRACE") {
             trace_options
-                .split(";")
+                .split(",")
                 .flat_map(|it| it.parse::<Step>())
                 .for_each(|it| {
                     default_options.insert(it);

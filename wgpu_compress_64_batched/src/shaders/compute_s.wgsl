@@ -12,7 +12,7 @@ var<storage, read_write> s_store: array<Ss>; // this is used as both input and o
 
 @group(0)
 @binding(1)
-var<storage, read_write> in: array<vec2<f32>>; // this is used as both input and output for convenience
+var<storage, read_write> in: array<f64>; // this is used as both input and output for convenience
 
 @group(0)
 @binding(2)
@@ -20,14 +20,14 @@ var<uniform> chunks:u32; // how many iterations per buffer
 
 
 
-fn calculate_s(workgoup_size:u32,id:u32,v_prev:vec2<f32>,v:vec2<f32>) -> Ss{
-   var v_prev_u64=bitcast<vec2<u32>>(v_prev);
-   var v_u64=bitcast<vec2<u32>>(v);
-   var i:vec2<u32>= vec2(v_prev_u64.x^v_u64.x,v_prev_u64.y^v_u64.y);
+fn calculate_s(workgoup_size:u32,id:u32,v_prev:f64,v:f64) -> Ss{
+   var v_prev_u64=bitcast<u64>(v_prev);
+   var v_u64=bitcast<u64>(v);
+   var i:u64= v_prev_u64^v_u64;
 
    var leading=i32((id % workgoup_size)!=0)*i32(countLeadingZeros64(i));
    var trailing=i32(countTrailingZeros64(i));
-   var equal=u32(i.x==0&&i.y==0);
+   var equal=u32(i==0);
 
 //   var leading_rounded:i32=i32(leading<8)*0;
 //   leading_rounded+=i32(leading>=8&&leading<12)*8;
@@ -40,10 +40,10 @@ fn calculate_s(workgoup_size:u32,id:u32,v_prev:vec2<f32>,v:vec2<f32>) -> Ss{
 
    return Ss(leading,trailing,equal);
 }
-fn countLeadingZeros64(x: vec2<u32>) -> u32 {
+fn countLeadingZeros64(x: u64) -> u32 {
     // Split into high and low 32-bit parts
-    let high = x.x;
-    let low = x.y;
+    let high = u32(x>>32);
+    let low = u32(x);
     
     // If high part is 0, count leading zeros in low part plus 32
     if (high == 0u) {
@@ -53,10 +53,10 @@ fn countLeadingZeros64(x: vec2<u32>) -> u32 {
     return countLeadingZeros(high);
 }
 
-fn countTrailingZeros64(x: vec2<u32>) -> u32 {
+fn countTrailingZeros64(x: u64) -> u32 {
     // Split into high and low 32-bit parts
-    let high = x.x;
-    let low = x.y;
+    let high = u32(x>>32);
+    let low = u32(x);
     
     // If low part is 0, count trailing zeros in high part plus 32
     if (low == 0u) {
@@ -69,10 +69,6 @@ fn countTrailingZeros64(x: vec2<u32>) -> u32 {
 @compute
 @workgroup_size(256)
 fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation_id) invocation_id: vec3<u32>) {
-    let x:u64=u64(1u)+u64(2u);
-    let y:u64=u64(1u)<<2u;
-    let z:u64=u64(1u)&u64(2u);
-    let t:u64=bitcast<u64>(f64(1.0));
     for (var i=0u;i<chunks;i++){
         let index:u32=workgroup_id.x * 256 * chunks + invocation_id.x+i*256u;
         s_store[index+1] = calculate_s(chunks*256,index,in[index],in[index+1]);

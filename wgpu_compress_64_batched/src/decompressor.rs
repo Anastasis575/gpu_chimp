@@ -1,4 +1,3 @@
-use crate::FinalizerEnum;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
@@ -53,11 +52,11 @@ impl Decompressor<f64> for BatchedGPUDecompressor {
                         0,
                         "Total bytes need to be in batches of 4"
                     );
-                    while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(4) {
+                    while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
                         byte_window = rest;
-                        //parse u32 from groups of 4 bytes
-                        let value_u32 = u32::from_be_bytes(first_four_bytes.try_into().unwrap());
-                        vec_window.push(value_u32);
+                        //parse u32 from groups of 8 bytes
+                        let value_u64 = u64::from_be_bytes(first_four_bytes.try_into().unwrap());
+                        vec_window.push(value_u64);
                     }
                     input_indexes.push(vec_window.len() as u32);
                     current_index += size_in_bytes as usize;
@@ -103,7 +102,7 @@ impl Default for BatchedGPUDecompressor {
 impl BatchedGPUDecompressor {
     pub(crate) async fn decompress_block(
         &self,
-        compressed_value_slice: &[u32],
+        compressed_value_slice: &[u64],
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f64>, DecompressionError> {

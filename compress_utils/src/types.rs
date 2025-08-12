@@ -1,3 +1,4 @@
+#[allow(dead_code, unused)]
 use crate::bit_utils::ToBitVec;
 use std::fmt;
 use std::fmt::Formatter;
@@ -58,12 +59,12 @@ impl fmt::Display for ChimpOutput {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput64 {
-    upper_bits: u32,
-    lower_bits: u64,
-    bit_count: u32,
+    pub upper_bits: u64,
+    pub lower_bits: u64,
+    pub bit_count: u64,
 }
 
 impl Default for ChimpOutput64 {
@@ -77,7 +78,7 @@ impl Default for ChimpOutput64 {
 }
 
 impl ChimpOutput64 {
-    pub fn upper_bits(&self) -> u32 {
+    pub fn upper_bits(&self) -> u64 {
         self.upper_bits
     }
 
@@ -85,11 +86,11 @@ impl ChimpOutput64 {
         self.lower_bits
     }
 
-    pub fn bit_count(&self) -> u32 {
+    pub fn bit_count(&self) -> u64 {
         self.bit_count
     }
 
-    pub fn set_upper_bits(&mut self, upper_bits: u32) {
+    pub fn set_upper_bits(&mut self, upper_bits: u64) {
         self.upper_bits = upper_bits;
     }
 
@@ -97,7 +98,7 @@ impl ChimpOutput64 {
         self.lower_bits = lower_bits;
     }
 
-    pub fn set_bit_count(&mut self, bit_count: u32) {
+    pub fn set_bit_count(&mut self, bit_count: u64) {
         self.bit_count = bit_count;
     }
 }
@@ -106,9 +107,9 @@ impl fmt::Display for ChimpOutput64 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Output:{{upper_bits:{}, lower_bits: {},bit_count: {} }}",
-            self.upper_bits().to_bit_vec(),
-            self.lower_bits().to_bit_vec(),
+            "Output:{{upper_bits:{:064b}, lower_bits: {:064b},bit_count: {} }}",
+            self.upper_bits(),
+            self.lower_bits(),
             self.bit_count()
         )
     }
@@ -116,6 +117,7 @@ impl fmt::Display for ChimpOutput64 {
 
 #[repr(C)]
 #[derive(Clone, Default, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[allow(dead_code, unused)]
 pub struct S {
     pub head: i32,
     pub tail: i32,

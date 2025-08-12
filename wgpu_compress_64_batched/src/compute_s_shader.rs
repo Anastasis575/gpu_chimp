@@ -20,6 +20,7 @@ pub struct ComputeSImpl {
     context: Arc<Context>,
 }
 
+#[allow(dead_code)]
 impl ComputeSImpl {
     pub fn new(context: impl Into<Arc<Context>>) -> Self {
         Self {
@@ -117,7 +118,10 @@ impl ComputeS for ComputeSImpl {
         .await?;
         info!("Output result size: {}", output.len());
         step!(Step::ComputeS, {
-            output.iter().map(|it| it.to_string()).into_iter()
+            output
+                .iter()
+                .map(|it| format!("{}\n", it.to_string()))
+                .into_iter()
         });
         Ok(output)
     }

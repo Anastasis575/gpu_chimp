@@ -84,8 +84,8 @@ fn write(input_idx:u32,output_idx:u32){
             let lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
             current_info=decr_counter_capped_at_32(&current_info,5u);
             
-            var significant_bits = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
-            current_info=decr_counter_capped_at_32(&current_info,5u);
+            var significant_bits = reinterpret_num(current_info.current_index,current_info.current_offset, 6u);
+            current_info=decr_counter_capped_at_32(&current_info,6u);
             
             if significant_bits == 0u {
                 significant_bits = 32u;

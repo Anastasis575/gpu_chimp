@@ -1,27 +1,34 @@
 use crate::compute_s_shader::{ComputeS, ComputeSImpl};
+use crate::cpu;
 use crate::final_compress::{FinalCompress, FinalCompressImpl64};
-use crate::finalize::{Finalize, Finalizer};
+use crate::finalize::{Finalize, Finalizer64};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{ChimpBufferInfo, Padding};
+use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput64, S};
 use log::info;
 use pollster::FutureExt;
 use std::ops::Div;
 use std::sync::Arc;
+use wgpu::naga::valid::FunctionInfo;
+use wgpu_compress_32_batched::FinalizerEnum::GPU;
+use wgpu_compress_32_batched::{FinalizerEnum, FinalizerImpl};
+use FinalizerEnum::CPU;
 
 #[derive(Debug)]
 pub struct ChimpCompressorBatched64 {
     // debug: bool,
     context: Arc<Context>,
+    device_type: FinalizerEnum,
 }
 impl Default for ChimpCompressorBatched64 {
     fn default() -> Self {
         Self {
             context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
+            device_type: FinalizerEnum::GPU,
         }
     }
 }
@@ -88,19 +95,111 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
         Ok(output_vec.to_bytes())
     }
 }
+enum ComputeS64Impls {
+    GPU(ComputeSImpl),
+    CPU(cpu::compute_s::CpuComputeSImpl),
+}
+
+impl MaxGroupGnostic for ComputeS64Impls {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        match self {
+            ComputeS64Impls::GPU(c) => c.get_max_number_of_groups(content_len),
+            ComputeS64Impls::CPU(c) => c.get_max_number_of_groups(content_len),
+        }
+    }
+}
+
+#[async_trait]
+impl ComputeS for ComputeS64Impls {
+    async fn compute_s(&self, values: &mut [f64]) -> anyhow::Result<Vec<S>> {
+        match self {
+            ComputeS64Impls::GPU(c) => c.compute_s(values).await,
+            ComputeS64Impls::CPU(c) => c.compute_s(values).await,
+        }
+    }
+}
+enum Compress64Impls {
+    GPU(FinalCompressImpl64),
+    CPU(cpu::chimp_compress::CPUFinalCompressImpl64),
+}
+
+impl MaxGroupGnostic for Compress64Impls {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        match self {
+            Compress64Impls::GPU(c) => c.get_max_number_of_groups(content_len),
+            Compress64Impls::CPU(c) => c.get_max_number_of_groups(content_len),
+        }
+    }
+}
+
+#[async_trait]
+impl FinalCompress for Compress64Impls {
+    async fn final_compress(
+        &self,
+        input: &mut Vec<f64>,
+        s_values: &mut Vec<S>,
+        padding: usize,
+    ) -> anyhow::Result<Vec<ChimpOutput64>> {
+        match self {
+            Compress64Impls::GPU(c) => c.final_compress(input, s_values, padding).await,
+            Compress64Impls::CPU(c) => c.final_compress(input, s_values, padding).await,
+        }
+    }
+}
+
+enum Finalizer64impls {
+    GPU(Finalizer64),
+    CPU(cpu::finalize::CPUFinalizer64),
+}
+#[async_trait]
+impl Finalize for Finalizer64impls {
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput64>,
+        padding: usize,
+    ) -> anyhow::Result<Vec<u8>> {
+        match self {
+            Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding).await,
+            Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding).await,
+        }
+    }
+}
 impl ChimpCompressorBatched64 {
-    fn compute_s_factory(&self) -> impl ComputeS {
-        ComputeSImpl::new(self.context.clone())
+    fn compute_s_factory(&self) -> ComputeS64Impls {
+        match self.device_type {
+            GPU => ComputeS64Impls::GPU(ComputeSImpl::new(self.context.clone())),
+            CPU => ComputeS64Impls::CPU(cpu::compute_s::CpuComputeSImpl::new(self.context.clone())),
+        }
     }
-    fn compute_final_compress_factory(&self) -> impl FinalCompress {
-        FinalCompressImpl64::new(self.context.clone(), false)
+    fn compute_final_compress_factory(&self) -> Compress64Impls {
+        match self.device_type {
+            GPU => Compress64Impls::GPU(FinalCompressImpl64::new(self.context.clone(), false)),
+            CPU => Compress64Impls::CPU(cpu::chimp_compress::CPUFinalCompressImpl64::new(
+                self.context.clone(),
+                false,
+            )),
+        }
     }
-    fn compute_finalize_factory(&self) -> impl Finalize {
-        Finalizer::new(self.context.clone())
+    fn compute_finalize_factory(&self) -> Finalizer64impls {
+        match self.device_type {
+            GPU => Finalizer64impls::GPU(Finalizer64::new(self.context.clone())),
+            CPU => Finalizer64impls::CPU(cpu::finalize::CPUFinalizer64::new(self.context.clone())),
+        }
     }
     pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
         Self {
             context: context.into(),
+            device_type: GPU,
         }
+    }
+
+    pub(crate) fn with_device(self, device: impl Into<FinalizerEnum>) -> Self {
+        Self {
+            device_type: device.into(),
+            ..self
+        }
+    }
+    pub(crate) fn device_type(&self) -> &FinalizerEnum {
+        &self.device_type
     }
 }

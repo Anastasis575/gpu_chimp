@@ -341,10 +341,10 @@ impl CPUWrite {
 
         let mut current_info = CurrentInfo::new(current_index, current_offset);
 
-        let mut first_num = self.input[(current_info.current_index - 1) as usize as usize];
+        let first_num = self.input[(current_info.current_index - 1) as usize];
         let mut last_num: u32 = first_num;
         let mut last_lead = 0u32;
-        let mut significant_bits = 0u32;
+        let mut significant_bits;
 
         let mut output_index = output_index;
 
@@ -354,7 +354,7 @@ impl CPUWrite {
         output_index += 1u32;
         current_info.current_offset += 32u32;
         // current_info.current_index+=1;
-        let mut value = 0u32;
+        let mut value;
         for _i in 1..self.size {
             // if we have not finished reading values from the uncompressed buffers
             if current_info.current_index >= (self.input.len() as u32 - 1u32)

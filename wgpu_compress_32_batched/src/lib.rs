@@ -127,10 +127,12 @@ impl ChimpCompressorBatched {
     /// - The function calculates the number of iterations by dividing the total size of the data in
     ///   the vector (`vec.len() * size_of::<S>()`) by the `BUFFER_MAX_SIZE`.
     /// - If the result is less than `1`, it defaults to returning `1` to guarantee at least one iteration.
+    #[allow(unused)]
     fn process_iterations_for_max_buffer_size(&self, vec: &mut Vec<f32>) -> usize {
         const BUFFER_MAX_SIZE: usize = 134217728;
         (vec.len() * size_of::<S>()) / BUFFER_MAX_SIZE + 1 //the S buffers are the most costly to allocate
     }
+    #[allow(unused)]
     fn process_iterations_for_max_workgroup_count(&self, vec: &mut Vec<f32>) -> usize {
         let max_workgroup_count = self.context.get_max_workgroup_size();
         vec.len() / max_workgroup_count + 1
