@@ -4,7 +4,6 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::step;
 use compress_utils::types::S;
-use itertools::Itertools;
 use log::info;
 use std::cmp::max;
 use std::fs;
@@ -107,7 +106,7 @@ impl CpuComputeSImpl {
         let low = x as u32;
 
         // If high part is 0, count leading zeros in low part plus 32
-        if (high == 0u32) {
+        if high == 0u32 {
             return low.leading_zeros() + 32u32;
         }
         // Otherwise, just count leading zeros in high part
@@ -120,7 +119,7 @@ impl CpuComputeSImpl {
         let low = x as u32;
 
         // If low part is 0, count trailing zeros in high part plus 32
-        if (low == 0u32) {
+        if low == 0u32 {
             return high.trailing_zeros() + 32u32;
         }
         // Otherwise, just count trailing zeros in low part

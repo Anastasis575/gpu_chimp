@@ -3,13 +3,14 @@ use compress_utils::context::Context;
 use compress_utils::cpu_compress::{
     CompressionError, Compressor, DecompressionError, Decompressor,
 };
+use compress_utils::general_utils::DeviceEnum;
 use itertools::Itertools;
 use std::sync::Arc;
 use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
-use wgpu_compress_32_batched::{ChimpCompressorBatched, FinalizerEnum};
+use wgpu_compress_32_batched::ChimpCompressorBatched;
 pub mod actual64;
 mod compute_s_shader;
-mod cpu;
+pub mod cpu;
 pub mod decompressor;
 mod final_compress;
 mod finalize;
@@ -23,7 +24,7 @@ where
 }
 
 impl ChimpCompressorBatched64<ChimpCompressorBatched> {
-    pub fn new(debug: bool, context: Arc<Context>, finalizer: FinalizerEnum) -> Self {
+    pub fn new(debug: bool, context: Arc<Context>, finalizer: DeviceEnum) -> Self {
         Self {
             compressor32bit: ChimpCompressorBatched::new(debug, context, finalizer),
         }
@@ -124,6 +125,7 @@ mod tests {
     };
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
+    use compress_utils::general_utils::DeviceEnum::{CPU, GPU};
     use env::set_var;
     use indicatif::ProgressIterator;
     use itertools::Itertools;
@@ -133,8 +135,8 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
+    use wgpu_compress_32_batched::cpu;
     use wgpu_compress_32_batched::cpu::decompressor::DebugBatchDecompressorCpu;
-    use wgpu_compress_32_batched::FinalizerEnum::{CPU, GPU};
 
     #[test]
     fn splitter_merger() {

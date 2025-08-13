@@ -15,10 +15,10 @@ pub struct vec2<T>(pub(crate) T, pub(crate) T);
 pub fn pseudo_u64_shift(output: vec2<u64>, number: u32) -> vec2<u64> {
     let first_number_bits = extract_bits(output.1, 64 - number, number) as u64;
     let mut new_output = vec2(output.0, output.1);
-    let mut check = ((number < 64) as u64);
-    new_output.0 = if check == 1 { (output.0 << number) } else { 0 };
+    let check = (number < 64) as u64;
+    new_output.0 = if check == 1 { output.0 << number } else { 0 };
     new_output.0 += first_number_bits;
-    new_output.1 = if check == 1 { (output.1 << number) } else { 0 };
+    new_output.1 = if check == 1 { output.1 << number } else { 0 };
 
     return new_output;
 }
@@ -54,11 +54,14 @@ pub fn insert_bits(input_bits: u64, new_bits: u64, start_index: u32, bit_count: 
     let end_index = min(start_index + bit_count, 64);
     let copiable_values = end_index - start_index;
 
-    let condition = ((copiable_values < 32) as u64);
-    let bits_to_copy =
-        condition * (new_bits % ((2u64) << (copiable_values - 1))) + (1 - condition) * new_bits;
+    let condition = (copiable_values < 64) as u64;
+    let bits_to_copy = if condition == 1 {
+        new_bits % ((2u64) << (copiable_values - 1))
+    } else {
+        new_bits
+    };
 
-    let is64 = (end_index < 32) as u64;
+    let is64 = (end_index < 64) as u64;
     output_bits += if is64 == 0 {
         0
     } else {

@@ -13,18 +13,15 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{add_padding_to_fit_buffer_count, ChimpBufferInfo, Padding};
+pub use compress_utils::general_utils::{
+    add_padding_to_fit_buffer_count, ChimpBufferInfo, DeviceEnum, Padding,
+};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
 use log::info;
 use pollster::FutureExt;
 use std::sync::Arc;
 
-#[derive(Debug)]
-pub enum FinalizerEnum {
-    GPU,
-    CPU,
-}
 #[derive(Debug)]
 pub enum FinalizerImpl {
     GPU(Finalizer),
@@ -48,14 +45,14 @@ impl Finalize for FinalizerImpl {
 pub struct ChimpCompressorBatched {
     debug: bool,
     context: Arc<Context>,
-    finalizer: FinalizerEnum,
+    finalizer: DeviceEnum,
 }
 impl Default for ChimpCompressorBatched {
     fn default() -> Self {
         Self {
             debug: false,
             context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
-            finalizer: FinalizerEnum::GPU,
+            finalizer: DeviceEnum::GPU,
         }
     }
 }
@@ -137,7 +134,7 @@ impl ChimpCompressorBatched {
         let max_workgroup_count = self.context.get_max_workgroup_size();
         vec.len() / max_workgroup_count + 1
     }
-    pub fn new(debug: bool, context: Arc<Context>, finalizer: FinalizerEnum) -> Self {
+    pub fn new(debug: bool, context: Arc<Context>, finalizer: DeviceEnum) -> Self {
         Self {
             debug,
             context,
@@ -169,15 +166,15 @@ impl ChimpCompressorBatched {
     }
     fn compute_finalize_factory(&self) -> impl Finalize + use<'_> {
         match self.finalizer {
-            FinalizerEnum::GPU => FinalizerImpl::GPU(Finalizer::new(self.context_a())),
-            FinalizerEnum::CPU => FinalizerImpl::CPU(CPUImpl::default()),
+            DeviceEnum::GPU => FinalizerImpl::GPU(Finalizer::new(self.context_a())),
+            DeviceEnum::CPU => FinalizerImpl::CPU(CPUImpl::default()),
         }
     }
 }
 #[cfg(test)]
 mod tests {
     use crate::decompressor::BatchedGPUDecompressor;
-    use crate::FinalizerEnum::{CPU, GPU};
+    use crate::DeviceEnum::{CPU, GPU};
     use crate::{cpu, ChimpCompressorBatched};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};

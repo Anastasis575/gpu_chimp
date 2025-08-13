@@ -31,8 +31,8 @@ impl Finalize for CPUFinalizer64 {
         padding: usize,
     ) -> anyhow::Result<Vec<u8>> {
         let chimp_input_length = chimp_output.len() - padding;
-        let input_length = chimp_input_length;
-        let output_vec = vec![0u64; chimp_input_length];
+        let _input_length = chimp_input_length;
+        let output_vec = vec![0u64; chimp_output.len()];
         let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
         let indexes = vec![0u32; workgroup_count];
         let size = ChimpBufferInfo::get().buffer_size();
@@ -119,16 +119,16 @@ impl CPUWriter64 {
 
         self.out_vec[idx as usize] = self.in_vec[idx as usize].lower_bits;
         for i in idx + 1u32..idx + self.size {
-            let mut chimp: ChimpOutput64 = self.in_vec[i as usize];
-            let mut overflow_bits = (chimp.bit_count as i32) - 32;
+            let chimp: ChimpOutput64 = self.in_vec[i as usize];
+            let overflow_bits = (chimp.bit_count as i32) - 64;
 
-            let mut fitting: u32 = 0u32;
-            let mut insert_index: u32 = 0u32;
-            let mut remaining: u32 = 0u32;
+            let mut fitting: u32;
+            let mut insert_index: u32;
+            let mut remaining: u32;
 
-            let mut bits_to_add: u64 = 0;
+            let mut bits_to_add: u64;
 
-            let mut rest_bits: u32 = 0u32;
+            let rest_bits: u32;
 
             if overflow_bits > 0 {
                 fitting = CPUWriter64::get_fitting(overflow_bits as u32, current_i_bits_left);

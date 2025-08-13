@@ -1,11 +1,11 @@
 
 @group(0)
 @binding(0)
-var<storage, read_write> out: array<f32>; // this is used as both input and output for convenience
+var<storage, read_write> out: array<f64>; // this is used as both input and output for convenience
 
 @group(0)
 @binding(1)
-var<storage, read_write> in: array<u32>; // this is used as both input and output for convenience
+var<storage, read_write> in: array<u64>; // this is used as both input and output for convenience
 
 
 @group(0)
@@ -38,17 +38,17 @@ fn write(input_idx:u32,output_idx:u32){
     var current_info=CurrentInfo(current_index,current_offset);
 
     var first_num=in[current_info.current_index - 1u];
-    var last_num:u32=first_num;
-    var last_lead=0u;
+    var last_num:u64=first_num;
+    var last_lead=u64(0u);
     var significant_bits=0u;
     
     var output_index=output_idx;
     
-    out[output_index]=bitcast<f32>(first_num);
+    out[output_index]=bitcast<f64>(first_num);
     output_index+=1u;
-    current_info.current_offset+=32u;
+    current_info.current_offset+=64u;
     // current_info.current_index+=1;
-    var value=0u;
+    var value=u64(0u);
     for (var i: u32 = 1u; i < size; i++) {
         // if we have not finished reading values from the uncompressed buffers
         if current_info.current_index>=(input_size - 1u) && (current_info.current_offset - 1u) <=0u{
@@ -61,14 +61,14 @@ fn write(input_idx:u32,output_idx:u32){
             var lead = last_lead;
             if  get_bit_at_index(current_info.current_index,current_info.current_offset)==1 {
                 current_info=decr_counter_capped_at_32(&current_info,1u);
-                lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
-                current_info=decr_counter_capped_at_32(&current_info,5u);
+                lead = reinterpret_num(current_info.current_index,current_info.current_offset, 6u);
+                current_info=decr_counter_capped_at_32(&current_info,6u);
             } else {
                 current_info=decr_counter_capped_at_32(&current_info,1u);
             }
-            significant_bits = 32u - lead;
+            significant_bits = 64u - u32(lead);
             if significant_bits == 0u {
-                significant_bits = 32u;
+                significant_bits = 64u;
             }
             value = reinterpret_num(current_info.current_index,current_info.current_offset, u32(significant_bits));
             current_info=decr_counter_capped_at_32(&current_info,u32(significant_bits));
@@ -76,40 +76,40 @@ fn write(input_idx:u32,output_idx:u32){
             last_num = value;
             last_lead = lead;
 
-            out[output_index]=bitcast<f32>(value);
+            out[output_index]=bitcast<f64>(value);
             output_index+=1u;
         } else if  get_bit_at_index(current_info.current_index,current_info.current_offset - 1u)==1u{
             current_info=decr_counter_capped_at_32(&current_info,2u);
             
-            let lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
-            current_info=decr_counter_capped_at_32(&current_info,5u);
+            let lead:u64 = reinterpret_num(current_info.current_index,current_info.current_offset, 6u);
+            current_info=decr_counter_capped_at_32(&current_info,6u);
             
             var significant_bits = reinterpret_num(current_info.current_index,current_info.current_offset, 6u);
             current_info=decr_counter_capped_at_32(&current_info,6u);
             
-            if significant_bits == 0u {
-                significant_bits = 32u;
+            if u32(significant_bits) == 0u {
+                significant_bits = 64;
             }
             
-            let trail = 32u - lead - significant_bits;
+            let trail = 64u - u32(lead) - u32(significant_bits);
             
-            value = reinterpret_num(current_info.current_index,current_info.current_offset, u32(32u - lead - trail));
+            value = reinterpret_num(current_info.current_index,current_info.current_offset, u32(64u - u32(lead) - trail));
             
-            current_info=decr_counter_capped_at_32(&current_info,u32(32u - lead - trail));
+            current_info=decr_counter_capped_at_32(&current_info,u32(64u - u32(lead) - trail));
             
             value <<= trail;
             value ^= last_num;
             last_lead = lead;
             last_num = value;
                             
-            out[output_index]=bitcast<f32>(value);
+            out[output_index]=bitcast<f64>(value);
             output_index+=1u;
 
         } else {
-            out[output_index]=bitcast<f32>(last_num);
+            out[output_index]=bitcast<f64>(last_num);
             output_index+=1u;
 
-            last_lead = 32u;
+            last_lead = u64(64u);
             current_info=decr_counter_capped_at_32(&current_info,2u);
         }
     }
@@ -118,29 +118,29 @@ fn write(input_idx:u32,output_idx:u32){
 
 fn get_bit_at_index(array_index: u32, position: u32) -> u32 {
     var index=u32(position==0u)*(array_index+1) + u32(position>0u)*array_index;
-    var f_position=u32(position==0u)*32u + u32(position>0u)*position;
-    return (in[index] >> (position - 1u)) & 1u;
+    var f_position=u32(position==0u)*64u + u32(position>0u)*position;
+    return u32((in[index] >> (f_position - 1u)) & u64(1u));
 }
 
 fn decr_counter_capped_at_32(value:ptr<function,CurrentInfo>,count:u32)->CurrentInfo{
     let corrected_value=i32((*value).current_offset)-i32(count);
-    (*value).current_offset=u32(corrected_value>0)*u32(corrected_value) + u32(corrected_value<=0)*u32(32+corrected_value);
+    (*value).current_offset=u32(corrected_value>0)*u32(corrected_value) + u32(corrected_value<=0)*u32(64+corrected_value);
     (*value).current_index+=u32(corrected_value<=0); //1 if it's true and 0 otherwise
     return (*value);
 }
 
-fn reinterpret_num(array_index:u32,index:u32,length:u32)->u32{
-    let len=min(length,32u);
+fn reinterpret_num(array_index:u32,index:u32,length:u32)->u64{
+    let len=min(length,64u);
     if index>=len {
         // Fully within one u32
-        return extractBits(in[array_index], u32(index-len), len);
+        return extract_bits(in[array_index], u32(index-len), len);
     } else {
         // Spans two u32 elements
         let bits_in_first = index;
         let bits_in_second = length-index;
 
-        let first_part = extractBits(in[array_index], 0u, index);
-        let second_part = extractBits(in[array_index + 1], 32u - bits_in_second, bits_in_second);
+        let first_part = extract_bits(in[array_index], 0u, index);
+        let second_part = extract_bits(in[array_index + 1], 64u - bits_in_second, bits_in_second);
         return (first_part << bits_in_second) | second_part;
     }
    

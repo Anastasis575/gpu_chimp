@@ -695,6 +695,12 @@ pub mod general_utils {
         Finalize,
         Decompress,
     }
+
+    #[derive(Debug)]
+    pub enum DeviceEnum {
+        GPU,
+        CPU,
+    }
     impl Step {
         pub fn get_trace_file(&self) -> PathBuf {
             match self {

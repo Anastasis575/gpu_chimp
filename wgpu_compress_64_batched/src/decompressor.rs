@@ -8,7 +8,7 @@ use compress_utils::{
 use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
@@ -48,9 +48,9 @@ impl Decompressor<f64> for BatchedGPUDecompressor {
                         .to_vec();
                     let mut byte_window = byte_window_vec.as_slice();
                     assert_eq!(
-                        byte_window.len() % 4,
+                        byte_window.len() % 8,
                         0,
-                        "Total bytes need to be in batches of 4"
+                        "Total bytes need to be in batches of 8"
                     );
                     while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
                         byte_window = rest;
@@ -68,7 +68,10 @@ impl Decompressor<f64> for BatchedGPUDecompressor {
                     .decompress_block(
                         vec_window.as_slice(),
                         input_indexes.as_slice(),
-                        ChimpBufferInfo::get().buffer_size(),
+                        min(
+                            total_uncompressed_values,
+                            ChimpBufferInfo::get().buffer_size(),
+                        ),
                     )
                     .await?;
 
@@ -106,7 +109,11 @@ impl BatchedGPUDecompressor {
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f64>, DecompressionError> {
-        let shader_code = include_str!("shaders/decompress.wgsl");
+        let util_64 = include_str!("shaders/64_utils.wgsl");
+
+        let shader_code = include_str!("shaders/decompress.wgsl")
+            .replace("//#include(64_utils)", util_64)
+            .to_string();
 
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
@@ -143,7 +150,7 @@ impl BatchedGPUDecompressor {
 
             let out_buffer_size = (iteration_input_indexes.len() - 1)
                 * ChimpBufferInfo::get().buffer_size()
-                * size_of::<u32>();
+                * size_of::<f64>();
             info!(
                 "The uncompressed output values buffer size in bytes: {}",
                 out_buffer_size
@@ -151,7 +158,7 @@ impl BatchedGPUDecompressor {
 
             let input_storage_buffer = BufferWrapper::storage_with_content(
                 self.device(),
-                bytemuck::cast_slice(compressed_value_slice),
+                bytemuck::cast_slice(iteration_compressed_values.as_slice()),
                 WgpuGroupId::new(0, 1),
                 Some("Storage input Buffer"),
             );
@@ -182,7 +189,7 @@ impl BatchedGPUDecompressor {
             );
             let input_size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),
-                bytemuck::bytes_of(&compressed_value_slice.len()),
+                bytemuck::bytes_of(&iteration_compressed_values.len()),
                 WgpuGroupId::new(0, 4),
                 Some("Total input buffer length"),
             );
@@ -205,7 +212,7 @@ impl BatchedGPUDecompressor {
             let output = wgpu_utils::get_s_output::<f64>(
                 self.context(),
                 out_storage_buffer.buffer(),
-                ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f32>())
+                ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f64>())
                     as BufferAddress,
                 out_staging.buffer(),
             )

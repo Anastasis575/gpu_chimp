@@ -48,7 +48,7 @@ impl Finalize for Finalizer64 {
             .to_string();
 
         // let size_of_chimp = size_of::<ChimpOutput>();
-        let size_of_out = size_of::<u32>();
+        let size_of_out = size_of::<u64>();
 
         let chimp_input_length = chimp_input.len() - padding;
         let input_length = chimp_input_length;
@@ -109,7 +109,7 @@ impl Finalize for Finalizer64 {
             workgroup_count
         );
 
-        let output = wgpu_utils::get_s_output::<u32>(
+        let output = wgpu_utils::get_s_output::<u64>(
             self.context(),
             out_storage_buffer.buffer(),
             output_buffer_size,
@@ -145,7 +145,10 @@ impl Finalize for Finalizer64 {
             final_vec.extend(temp_vec);
         }
         step!(&Step::Finalize, {
-            final_vec.iter().map(|it| format!("{:08b}", it)).into_iter()
+            final_vec
+                .iter()
+                .map(|it| format!("{:08b}\n", it))
+                .into_iter()
         });
         Ok(final_vec)
     }

@@ -25,15 +25,15 @@ impl CPUFinalCompressImpl64 {
     }
     fn compress(v: f64, s: S, v_prev: f64, s_prev: S) -> ChimpOutput64 {
         //Conditions
-        let mut trail_gt_6 = ((s.tail > 6) as u32);
-        let mut trail_le_6 = ((s.tail <= 6) as u32);
-        let mut not_equal = (1 - (s.equal) as u32);
-        let mut pr_lead = (s_prev.head);
-        let mut pr_lead_eq_lead = (s.head == pr_lead) as u32;
+        let trail_gt_6 = (s.tail > 6) as u32;
+        let trail_le_6 = (s.tail <= 6) as u32;
+        let not_equal = 1 - (s.equal) as u32;
+        let pr_lead = s_prev.head;
+        let pr_lead_eq_lead = (s.head == pr_lead) as u32;
         let pr_lead_ne_lead = (s.head != pr_lead) as u32;
 
         //input
-        let mut v_prev_u64: u64 = bytemuck::cast(v_prev);
+        let v_prev_u64: u64 = bytemuck::cast(v_prev);
         let v_u64: u64 = bytemuck::cast(v);
         let xorred: u64 = v_prev_u64 ^ v_u64;
 
@@ -43,10 +43,6 @@ impl CPUFinalCompressImpl64 {
             (64 - s.head - s.tail) as u32
         };
 
-        //Output
-        let content: vec2<u64> = vec2::<u64>(0, 0);
-        let bit_count: u32 = 0;
-
         //case 1:  xor_value=0
         let case_1: vec2<u64> = vec2::<u64>(0, 0);
         let case_1_bit_count: u32 = 2;
@@ -55,27 +51,27 @@ impl CPUFinalCompressImpl64 {
 
         // case 2: tail>6 && xor_value!=0(!equal)
         let mut case_2: vec2<u64> = vec2::<u64>(0, 1); //code:01 bit_count=2
-        case_2 = pseudo_u64_shift(case_2, 5u32);
-        case_2.1 += extract_bits(((s.head) as u32), 0u32, 5u32) as u64;
         case_2 = pseudo_u64_shift(case_2, 6u32);
-        case_2.1 += (extract_bits(center_bits, 0u32, 6u32) as u64);
+        case_2.1 += extract_bits((s.head) as u32, 0u32, 6u32) as u64;
+        case_2 = pseudo_u64_shift(case_2, 6u32);
+        case_2.1 += extract_bits(center_bits, 0u32, 6u32) as u64;
         case_2 = pseudo_u64_shift(case_2, center_bits);
         case_2.1 += utils_64::extract_bits(xorred, s.tail as u32, center_bits);
-        let mut case_2_bit_count = 2 + 6 + 5 + center_bits;
+        let case_2_bit_count = 2 + 6 + 6 + center_bits;
 
         // case 3: tail<=6 and lead=pr_lead
         let mut case_3: vec2<u64> = vec2::<u64>(0, 2); // code 10
-        case_3 = pseudo_u64_shift(case_3, ((64 - s.head) as u32));
-        case_3.1 += utils_64::extract_bits(xorred, 0u32, ((64 - s.head) as u32));
-        let mut case_3_bit_count: u32 = 2 + ((64 - s.head) as u32);
+        case_3 = pseudo_u64_shift(case_3, (64 - s.head) as u32);
+        case_3.1 += utils_64::extract_bits(xorred, 0u32, (64 - s.head) as u32);
+        let case_3_bit_count: u32 = 2 + ((64 - s.head) as u32);
 
         // case 4: tail<=6 and lead!=pr_lead
         let mut case_4: vec2<u64> = vec2::<u64>(0, 3); // code 11
-        case_4 = pseudo_u64_shift(case_4, 5u32);
-        case_4.1 += extract_bits(s.head as u32, 0u32, 5u32) as u64;
-        case_4 = pseudo_u64_shift(case_4, ((64 - s.head) as u32));
+        case_4 = pseudo_u64_shift(case_4, 6u32);
+        case_4.1 += extract_bits(s.head as u32, 0u32, 6u32) as u64;
+        case_4 = pseudo_u64_shift(case_4, (64 - s.head) as u32);
         case_4.1 += utils_64::extract_bits(xorred, 0u32, (64 - s.head) as u32);
-        let mut case_4_bit_count: u32 = 2 + 5 + 64 - ((s.head) as u32);
+        let case_4_bit_count: u32 = 2 + 6 + 64 - ((s.head) as u32);
 
         let mut final_output_i32 = vec_condition(s.equal as u64) * case_1;
 
@@ -87,7 +83,7 @@ impl CPUFinalCompressImpl64 {
         final_output_i32 +=
             vec_condition((trail_le_6 * pr_lead_ne_lead * not_equal) as u64) * case_4;
 
-        let mut final_bit_count = s.equal * case_1_bit_count
+        let final_bit_count = s.equal * case_1_bit_count
             + (trail_gt_6 * not_equal) * (case_2_bit_count)
             + (trail_le_6 * pr_lead_eq_lead * not_equal) * case_3_bit_count
             + (trail_le_6 * pr_lead_ne_lead * not_equal) * case_4_bit_count;

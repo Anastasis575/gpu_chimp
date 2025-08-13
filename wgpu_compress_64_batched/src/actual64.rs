@@ -6,29 +6,25 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Padding};
+use compress_utils::general_utils::{ChimpBufferInfo, DeviceEnum, MaxGroupGnostic, Padding};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput64, S};
 use log::info;
 use pollster::FutureExt;
 use std::ops::Div;
 use std::sync::Arc;
-use wgpu::naga::valid::FunctionInfo;
-use wgpu_compress_32_batched::FinalizerEnum::GPU;
-use wgpu_compress_32_batched::{FinalizerEnum, FinalizerImpl};
-use FinalizerEnum::CPU;
 
 #[derive(Debug)]
 pub struct ChimpCompressorBatched64 {
     // debug: bool,
     context: Arc<Context>,
-    device_type: FinalizerEnum,
+    device_type: DeviceEnum,
 }
 impl Default for ChimpCompressorBatched64 {
     fn default() -> Self {
         Self {
             context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
-            device_type: FinalizerEnum::GPU,
+            device_type: DeviceEnum::GPU,
         }
     }
 }
@@ -164,42 +160,48 @@ impl Finalize for Finalizer64impls {
         }
     }
 }
+#[allow(unused)]
 impl ChimpCompressorBatched64 {
     fn compute_s_factory(&self) -> ComputeS64Impls {
-        match self.device_type {
-            GPU => ComputeS64Impls::GPU(ComputeSImpl::new(self.context.clone())),
-            CPU => ComputeS64Impls::CPU(cpu::compute_s::CpuComputeSImpl::new(self.context.clone())),
+        match self.device_type() {
+            DeviceEnum::GPU => ComputeS64Impls::GPU(ComputeSImpl::new(self.context.clone())),
+            DeviceEnum::CPU => {
+                ComputeS64Impls::CPU(cpu::compute_s::CpuComputeSImpl::new(self.context.clone()))
+            }
         }
     }
     fn compute_final_compress_factory(&self) -> Compress64Impls {
-        match self.device_type {
-            GPU => Compress64Impls::GPU(FinalCompressImpl64::new(self.context.clone(), false)),
-            CPU => Compress64Impls::CPU(cpu::chimp_compress::CPUFinalCompressImpl64::new(
-                self.context.clone(),
-                false,
-            )),
+        match self.device_type() {
+            &DeviceEnum::GPU => {
+                Compress64Impls::GPU(FinalCompressImpl64::new(self.context.clone(), false))
+            }
+            &DeviceEnum::CPU => Compress64Impls::CPU(
+                cpu::chimp_compress::CPUFinalCompressImpl64::new(self.context.clone(), false),
+            ),
         }
     }
     fn compute_finalize_factory(&self) -> Finalizer64impls {
-        match self.device_type {
-            GPU => Finalizer64impls::GPU(Finalizer64::new(self.context.clone())),
-            CPU => Finalizer64impls::CPU(cpu::finalize::CPUFinalizer64::new(self.context.clone())),
+        match self.device_type() {
+            &DeviceEnum::GPU => Finalizer64impls::GPU(Finalizer64::new(self.context.clone())),
+            &DeviceEnum::CPU => {
+                Finalizer64impls::CPU(cpu::finalize::CPUFinalizer64::new(self.context.clone()))
+            }
         }
     }
     pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
         Self {
             context: context.into(),
-            device_type: GPU,
+            device_type: DeviceEnum::GPU,
         }
     }
 
-    pub(crate) fn with_device(self, device: impl Into<FinalizerEnum>) -> Self {
+    pub(crate) fn with_device(self, device: impl Into<DeviceEnum>) -> Self {
         Self {
             device_type: device.into(),
             ..self
         }
     }
-    pub(crate) fn device_type(&self) -> &FinalizerEnum {
+    pub(crate) fn device_type(&self) -> &DeviceEnum {
         &self.device_type
     }
 }

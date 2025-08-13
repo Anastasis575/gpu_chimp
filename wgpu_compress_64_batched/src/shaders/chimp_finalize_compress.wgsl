@@ -49,7 +49,7 @@ fn write(idx:u32)->u32{
     out[idx]=in[idx].lower_bits;
     for (var i: u32 = idx+1u; i < idx+size; i++) {
         var chimp:Output64=in[i];
-        var overflow_bits=i32(chimp.bit_count) - 32;
+        var overflow_bits=i32(chimp.bit_count) - 64;
         
         var first_add=0u;
         var second_add=0u;

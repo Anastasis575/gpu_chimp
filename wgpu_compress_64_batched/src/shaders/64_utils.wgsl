@@ -12,9 +12,9 @@ fn pseudo_u64_shift(output:vec2<u64>,number:u32)->vec2<u64>{
     var first_number_bits=u64(extract_bits(output.y,64-number,number));
     var new_output=vec2<u64>(output.x,output.y);
     var check = u64(number < 64);
-    new_output.x = select(0,(output.x << number),number < 64);
+    new_output.x = check*(output.x << number);
     new_output.x += first_number_bits;
-    new_output.y = select(0,(output.y<<number),number < 64);
+    new_output.y = u64(number < 64)*(output.y<<number);
  
     return new_output;
  }
@@ -34,31 +34,31 @@ fn pseudo_u64_shift(output:vec2<u64>,number:u32)->vec2<u64>{
      let u32_max=0xFFFFFFFFu;
      let u64_max= (u64(u32_max)<<32) +u64(u32_max);
      let end_index:u32 = min(start_index + bit_count, 64);
-     let low_bound:u64 = select(u64_max << start_index,0,start_index==64u);
-     let high_bound:u64 = select(u64_max >> (64u - end_index),0,64u - end_index==64u);
+     let low_bound:u64 = u64(start_index<64u)*(u64_max << start_index);
+     let high_bound:u64 = u64(64u - end_index<64u)*(u64_max >> (64u - end_index));
  
      input_bits = input_bits & low_bound;
      input_bits = input_bits & high_bound;
-     return select(input_bits >> start_index,0,start_index==64u);
+     return u64(start_index<64u)*(input_bits >> start_index);
  }
 fn insert_bits(input_bits: u64, new_bits: u64, start_index: u32, bit_count: u32) -> u64 {
-    var output_bits = u64();
+    var output_bits = u64(0);
 
     let end_index = min(start_index + bit_count, 64);
     let copiable_values = end_index - start_index;
 
-    let condition=u64(copiable_values < 32);
-    let bits_to_copy = condition*(new_bits % (u64(2u)<<(copiable_values- 1))) + (1-condition)*new_bits;
+    let condition=u64(copiable_values < 64);
+    let bits_to_copy = condition*(new_bits % (u64(2u)<<(copiable_values- 1)))+(1-condition)*new_bits;
 
-    let is64= u64(end_index < 32);
-    output_bits += is64*(input_bits >> end_index);
+    let is64= u64(end_index < 64);
+    output_bits += u64(is64)* (input_bits >> end_index);
     output_bits <<= u32(is64)*copiable_values;
     
     output_bits += bits_to_copy;
     output_bits <<= start_index;
     
     let starts0= u64(start_index != 0);
-    output_bits += starts0*u64(start_index<63)*(input_bits % u64(2u)<<start_index);
+    output_bits += u64(starts0)*u64(start_index<63)*(input_bits % u64(2u)<<start_index);
     return output_bits;
 }
 
