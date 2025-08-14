@@ -1,9 +1,10 @@
 use crate::cpu::utils_64;
-use crate::decompressor::BatchedGPUDecompressor;
+use crate::decompressor::GPUDecompressorBatched64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::trace_steps;
+use compress_utils::general_utils::DeviceEnum::GPU;
+use compress_utils::general_utils::{trace_steps, DeviceEnum};
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{step, time_it};
 use itertools::Itertools;
@@ -13,21 +14,16 @@ use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
 
-pub struct CPUBatchedGPUDecompressor64(pub Arc<Context>);
-impl Default for CPUBatchedGPUDecompressor64 {
-    fn default() -> Self {
-        Self(Arc::new(
-            Context::initialize_default_adapter().block_on().unwrap(),
-        ))
-    }
+pub struct CPUDecompressorBatched64 {
+    context: Arc<Context>,
 }
-impl MaxGroupGnostic for CPUBatchedGPUDecompressor64 {
+impl MaxGroupGnostic for CPUDecompressorBatched64 {
     fn get_max_number_of_groups(&self, _content_len: usize) -> usize {
         self.context().get_max_workgroup_size()
     }
 }
 #[async_trait]
-impl Decompressor<f64> for CPUBatchedGPUDecompressor64 {
+impl Decompressor<f64> for CPUDecompressorBatched64 {
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
         let mut current_index = 0usize;
         let uncompressed_values;
@@ -94,7 +90,7 @@ impl Decompressor<f64> for CPUBatchedGPUDecompressor64 {
         Ok(uncompressed_values)
     }
 }
-impl CPUBatchedGPUDecompressor64 {
+impl CPUDecompressorBatched64 {
     //noinspection DuplicatedCode
     pub(crate) async fn decompress_block(
         &self,
@@ -176,7 +172,12 @@ impl CPUBatchedGPUDecompressor64 {
     }
 
     pub fn context(&self) -> &Context {
-        &self.0
+        &self.context
+    }
+    pub fn new(context: impl Into<Arc<Context>>) -> Self {
+        Self {
+            context: context.into(),
+        }
     }
 }
 

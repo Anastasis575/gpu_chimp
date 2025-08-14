@@ -1,7 +1,11 @@
+use crate::cpu::decompressor::CPUDecompressorBatched64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
+use compress_utils::general_utils::DeviceEnum::GPU;
+use compress_utils::general_utils::{
+    trace_steps, ChimpBufferInfo, DeviceEnum, MaxGroupGnostic, Step,
+};
 use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
@@ -14,8 +18,84 @@ use std::sync::Arc;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
+pub enum DecompressorImpl {
+    GPU(GPUDecompressorBatched64),
+    CPU(CPUDecompressorBatched64),
+}
+
+impl MaxGroupGnostic for DecompressorImpl {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        match self {
+            DecompressorImpl::GPU(d) => d.get_max_number_of_groups(content_len),
+            DecompressorImpl::CPU(d) => d.get_max_number_of_groups(content_len),
+        }
+    }
+}
+
 #[async_trait]
-impl Decompressor<f64> for BatchedGPUDecompressor {
+impl Decompressor<f64> for DecompressorImpl {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
+        match self {
+            DecompressorImpl::GPU(d) => d.decompress(vec).await,
+            DecompressorImpl::CPU(d) => d.decompress(vec).await,
+        }
+    }
+}
+
+pub struct ChimpDecompressorBatched64 {
+    context: Arc<Context>,
+    device_type: DeviceEnum,
+}
+impl Default for ChimpDecompressorBatched64 {
+    fn default() -> Self {
+        Self {
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
+            device_type: GPU,
+        }
+    }
+}
+impl MaxGroupGnostic for ChimpDecompressorBatched64 {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        self.decompressor_factory()
+            .get_max_number_of_groups(content_len)
+    }
+}
+#[async_trait]
+impl Decompressor<f64> for ChimpDecompressorBatched64 {
+    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
+        self.decompressor_factory().decompress(vec).await
+    }
+}
+impl ChimpDecompressorBatched64 {
+    pub fn new(context: Arc<Context>) -> Self {
+        Self {
+            context,
+            device_type: GPU,
+        }
+    }
+    pub fn with_device(self, device: impl Into<DeviceEnum>) -> Self {
+        Self {
+            device_type: device.into(),
+            ..self
+        }
+    }
+
+    pub fn decompressor_factory(&self) -> DecompressorImpl {
+        match self.device_type() {
+            GPU => DecompressorImpl::GPU(GPUDecompressorBatched64::new(self.context.clone())),
+            DeviceEnum::CPU => {
+                DecompressorImpl::CPU(CPUDecompressorBatched64::new(self.context.clone()))
+            }
+        }
+    }
+
+    pub fn device_type(&self) -> &DeviceEnum {
+        &self.device_type
+    }
+}
+
+#[async_trait]
+impl Decompressor<f64> for GPUDecompressorBatched64 {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
@@ -87,22 +167,22 @@ impl Decompressor<f64> for BatchedGPUDecompressor {
     }
 }
 
-pub struct BatchedGPUDecompressor {
+pub struct GPUDecompressorBatched64 {
     context: Arc<Context>,
 }
-impl MaxGroupGnostic for BatchedGPUDecompressor {
+impl MaxGroupGnostic for GPUDecompressorBatched64 {
     fn get_max_number_of_groups(&self, _content_len: usize) -> usize {
         self.context().get_max_workgroup_size()
     }
 }
-impl Default for BatchedGPUDecompressor {
+impl Default for GPUDecompressorBatched64 {
     fn default() -> Self {
         Self {
             context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
         }
     }
 }
-impl BatchedGPUDecompressor {
+impl GPUDecompressorBatched64 {
     pub(crate) async fn decompress_block(
         &self,
         compressed_value_slice: &[u64],

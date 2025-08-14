@@ -1,14 +1,18 @@
+use crate::compute_s_shader::{ComputeS, ComputeSImpl};
+use crate::final_compress::{FinalCompress, FinalCompressImpl64};
+use crate::finalize::{Finalize, Finalizer64};
 use async_trait::async_trait;
+use bit_vec::BitVec;
 use compress_utils::context::Context;
-use compress_utils::cpu_compress::{
-    CompressionError, Compressor, DecompressionError, Decompressor,
-};
-use compress_utils::general_utils::DeviceEnum;
-use itertools::Itertools;
+use compress_utils::cpu_compress::{CompressionError, Compressor};
+use compress_utils::general_utils::{ChimpBufferInfo, DeviceEnum, MaxGroupGnostic, Padding};
+use compress_utils::time_it;
+use compress_utils::types::{ChimpOutput64, S};
+use log::info;
+use pollster::FutureExt;
+use std::ops::Div;
 use std::sync::Arc;
-use wgpu_compress_32_batched::decompressor::BatchedGPUDecompressor;
-use wgpu_compress_32_batched::ChimpCompressorBatched;
-pub mod actual64;
+
 mod compute_s_shader;
 pub mod cpu;
 pub mod decompressor;
@@ -16,43 +20,195 @@ mod final_compress;
 mod finalize;
 
 #[derive(Debug)]
-pub struct ChimpCompressorBatched64<T>
-where
-    T: Compressor<f32>,
-{
-    compressor32bit: T,
+pub struct ChimpCompressorBatched64 {
+    context: Arc<Context>,
+    device_type: DeviceEnum,
 }
-
-impl ChimpCompressorBatched64<ChimpCompressorBatched> {
-    pub fn new(debug: bool, context: Arc<Context>, finalizer: DeviceEnum) -> Self {
-        Self {
-            compressor32bit: ChimpCompressorBatched::new(debug, context, finalizer),
-        }
-    }
-}
-impl Default for ChimpCompressorBatched64<ChimpCompressorBatched> {
+impl Default for ChimpCompressorBatched64 {
     fn default() -> Self {
         Self {
-            compressor32bit: ChimpCompressorBatched::default(),
+            context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
+            device_type: DeviceEnum::GPU,
         }
     }
 }
 
-// fn splitter(value: f64) -> [f32; 2] {
-//     const LOW_MASK: u64 = 0xFFFF_FFFF;
-//     const SHIFT: u32 = 32;
-//
-//     let bits = bytemuck::cast::<f64, u64>(value);
-//     let high_bits = (bits >> SHIFT) as u32;
-//     let low_bits = (bits & LOW_MASK) as u32;
-//     [high_bits as f32, low_bits as f32]
-// }
-// fn merger(value: [f32; 2]) -> f64 {
-//     let high = value[0] as u64;
-//     let low = value[1] as u64;
-//     let bits = (high << 32) | low;
-//     bytemuck::cast::<u64, f64>(bits)
-// }
+pub fn add_padding_to_fit_buffer_count_64(
+    mut values: Vec<f64>,
+    buffer_size: usize,
+    padding: &mut Padding,
+) -> Vec<f64> {
+    if values.len() % buffer_size != 0 {
+        let count = (values.len().div(buffer_size) + 1) * buffer_size - values.len();
+        padding.0 = count;
+        for _i in 0..count {
+            values.push(0f64);
+        }
+    }
+    values
+}
+
+#[async_trait]
+impl Compressor<f64> for ChimpCompressorBatched64 {
+    async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
+        let mut padding = Padding(0);
+        let buffer_size = ChimpBufferInfo::get().buffer_size();
+        let mut values = vec.to_owned();
+        values = add_padding_to_fit_buffer_count_64(values, buffer_size, &mut padding);
+        let mut total_millis = 0;
+        let mut s_values: Vec<S>;
+        let mut chimp_vec: Vec<ChimpOutput64>;
+
+        let compute_s_impl = self.compute_s_factory();
+        let final_compress_impl = self.compute_final_compress_factory();
+        let finalize_impl = self.compute_finalize_factory();
+
+        let output_vec: BitVec;
+        time_it!(
+            {
+                s_values = compute_s_impl.compute_s(&mut values).await?;
+            },
+            total_millis,
+            "s computation stage"
+        );
+        time_it!(
+            {
+                chimp_vec = final_compress_impl
+                    .final_compress(&mut values, &mut s_values, 0)
+                    .await?;
+            },
+            total_millis,
+            "final output stage"
+        );
+        time_it!(
+            {
+                output_vec = BitVec::from_bytes(
+                    finalize_impl
+                        .finalize(&mut chimp_vec, padding.0)
+                        .await?
+                        .as_slice(),
+                );
+            },
+            total_millis,
+            "final Result collection"
+        );
+        Ok(output_vec.to_bytes())
+    }
+}
+enum ComputeS64Impls {
+    GPU(ComputeSImpl),
+    CPU(cpu::compute_s::CpuComputeSImpl),
+}
+
+impl MaxGroupGnostic for ComputeS64Impls {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        match self {
+            ComputeS64Impls::GPU(c) => c.get_max_number_of_groups(content_len),
+            ComputeS64Impls::CPU(c) => c.get_max_number_of_groups(content_len),
+        }
+    }
+}
+
+#[async_trait]
+impl ComputeS for ComputeS64Impls {
+    async fn compute_s(&self, values: &mut [f64]) -> anyhow::Result<Vec<S>> {
+        match self {
+            ComputeS64Impls::GPU(c) => c.compute_s(values).await,
+            ComputeS64Impls::CPU(c) => c.compute_s(values).await,
+        }
+    }
+}
+enum Compress64Impls {
+    GPU(FinalCompressImpl64),
+    CPU(cpu::chimp_compress::CPUFinalCompressImpl64),
+}
+
+impl MaxGroupGnostic for Compress64Impls {
+    fn get_max_number_of_groups(&self, content_len: usize) -> usize {
+        match self {
+            Compress64Impls::GPU(c) => c.get_max_number_of_groups(content_len),
+            Compress64Impls::CPU(c) => c.get_max_number_of_groups(content_len),
+        }
+    }
+}
+
+#[async_trait]
+impl FinalCompress for Compress64Impls {
+    async fn final_compress(
+        &self,
+        input: &mut Vec<f64>,
+        s_values: &mut Vec<S>,
+        padding: usize,
+    ) -> anyhow::Result<Vec<ChimpOutput64>> {
+        match self {
+            Compress64Impls::GPU(c) => c.final_compress(input, s_values, padding).await,
+            Compress64Impls::CPU(c) => c.final_compress(input, s_values, padding).await,
+        }
+    }
+}
+
+enum Finalizer64impls {
+    GPU(Finalizer64),
+    CPU(cpu::finalize::CPUFinalizer64),
+}
+#[async_trait]
+impl Finalize for Finalizer64impls {
+    async fn finalize(
+        &self,
+        chimp_output: &mut Vec<ChimpOutput64>,
+        padding: usize,
+    ) -> anyhow::Result<Vec<u8>> {
+        match self {
+            Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding).await,
+            Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding).await,
+        }
+    }
+}
+#[allow(unused)]
+impl ChimpCompressorBatched64 {
+    fn compute_s_factory(&self) -> ComputeS64Impls {
+        match self.device_type() {
+            DeviceEnum::GPU => ComputeS64Impls::GPU(ComputeSImpl::new(self.context.clone())),
+            DeviceEnum::CPU => {
+                ComputeS64Impls::CPU(cpu::compute_s::CpuComputeSImpl::new(self.context.clone()))
+            }
+        }
+    }
+    fn compute_final_compress_factory(&self) -> Compress64Impls {
+        match self.device_type() {
+            &DeviceEnum::GPU => {
+                Compress64Impls::GPU(FinalCompressImpl64::new(self.context.clone(), false))
+            }
+            &DeviceEnum::CPU => Compress64Impls::CPU(
+                cpu::chimp_compress::CPUFinalCompressImpl64::new(self.context.clone(), false),
+            ),
+        }
+    }
+    fn compute_finalize_factory(&self) -> Finalizer64impls {
+        match self.device_type() {
+            &DeviceEnum::GPU => Finalizer64impls::GPU(Finalizer64::new(self.context.clone())),
+            &DeviceEnum::CPU => {
+                Finalizer64impls::CPU(cpu::finalize::CPUFinalizer64::new(self.context.clone()))
+            }
+        }
+    }
+    pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
+        Self {
+            context: context.into(),
+            device_type: DeviceEnum::GPU,
+        }
+    }
+
+    pub(crate) fn with_device(self, device: impl Into<DeviceEnum>) -> Self {
+        Self {
+            device_type: device.into(),
+            ..self
+        }
+    }
+    pub(crate) fn device_type(&self) -> &DeviceEnum {
+        &self.device_type
+    }
+}
 
 fn splitter(value: f64) -> [f32; 2] {
     let bits = bytemuck::cast::<f64, u64>(value);
@@ -67,62 +223,9 @@ fn merger(value: [f32; 2]) -> f64 {
     bytemuck::cast(high | low)
 }
 
-#[async_trait]
-impl<T: Compressor<f32> + Send + Sync> Compressor<f64> for ChimpCompressorBatched64<T> {
-    async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
-        let mut split = vec.iter().map(|it| splitter(*it)).collect_vec();
-        let mut final_values = split.iter_mut().map(|x| x[0]).collect_vec();
-        let split_right_side = split.iter_mut().map(|x| x[1]).collect_vec();
-        final_values.extend(split_right_side);
-        let compressed = self.compressor32bit.compress(&mut final_values).await?;
-        Ok(compressed)
-    }
-}
-
-#[derive(Debug)]
-pub struct ChimpDecompressorBatched64<T>
-where
-    T: Decompressor<f32>,
-{
-    decompressor32bits: T,
-}
-
-impl ChimpDecompressorBatched64<BatchedGPUDecompressor> {
-    pub fn new(context: Arc<Context>) -> Self {
-        Self {
-            decompressor32bits: BatchedGPUDecompressor::new(context),
-        }
-    }
-}
-impl Default for ChimpDecompressorBatched64<BatchedGPUDecompressor> {
-    fn default() -> Self {
-        Self {
-            decompressor32bits: BatchedGPUDecompressor::default(),
-        }
-    }
-}
-
-#[async_trait]
-impl<T: Decompressor<f32> + Send + Sync> Decompressor<f64> for ChimpDecompressorBatched64<T> {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
-        let decompressed = self.decompressor32bits.decompress(vec).await?;
-        assert_eq!(decompressed.len() % 2, 0);
-        let mut merged = Vec::with_capacity(decompressed.len() / 2 + 1);
-        let half = decompressed.len() / 2;
-        (0..half).for_each(|i| {
-            let values = [decompressed[i], decompressed[half + i]];
-            merged.push(merger(values));
-        });
-        Ok(merged)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{
-        actual64, decompressor, merger, splitter, ChimpCompressorBatched64,
-        ChimpDecompressorBatched64,
-    };
+    use crate::{decompressor, merger, splitter, ChimpCompressorBatched64};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::DeviceEnum::{CPU, GPU};
@@ -168,7 +271,7 @@ mod tests {
                 .block_on()
                 .unwrap(),
         );
-        for buffer_size in vec![256].into_iter() {
+        for buffer_size in vec![256, 512, 1024, 2048].into_iter() {
             let filename = format!("{buffer_size}_chimp64_output.txt");
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
@@ -181,12 +284,11 @@ mod tests {
             let values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
-            // for size_checkpoint in (1..11).progress() {
-            for size_checkpoint in (2..3).progress() {
+            for size_checkpoint in (1..11).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let compressor = ChimpCompressorBatched64::new(false, context.clone(), GPU);
+                let compressor = ChimpCompressorBatched64::new(context.clone());
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -202,9 +304,7 @@ mod tests {
                 ));
 
                 let time = std::time::Instant::now();
-                let decompressor = ChimpDecompressorBatched64 {
-                    decompressor32bits: DebugBatchDecompressorCpu::default(),
-                };
+                let decompressor = decompressor::ChimpDecompressorBatched64::new(context.clone());
                 match decompressor.decompress(&mut compressed_values2).block_on() {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
@@ -253,9 +353,9 @@ mod tests {
                 .unwrap(),
         );
         for file_name in vec![
-            // "city_temperature.csv",
+            "city_temperature.csv",
             "SSD_HDD_benchmarks.csv",
-            // "Stocks-Germany-sample.txt", Problematic
+            "Stocks-Germany-sample.txt",
         ]
         .into_iter()
         {
@@ -279,7 +379,7 @@ mod tests {
 
                 log::info!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let compressor = actual64::ChimpCompressorBatched64::new(context.clone()); //.with_device(CPU);
+                let compressor = ChimpCompressorBatched64::new(context.clone()); //.with_device(CPU);
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -295,7 +395,7 @@ mod tests {
                 ));
 
                 let time = std::time::Instant::now();
-                let decompressor = decompressor::BatchedGPUDecompressor::new(context.clone());
+                let decompressor = decompressor::GPUDecompressorBatched64::new(context.clone());
                 match decompressor.decompress(&mut compressed_values2).block_on() {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
