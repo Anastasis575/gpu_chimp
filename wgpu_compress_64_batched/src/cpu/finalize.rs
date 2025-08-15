@@ -22,6 +22,15 @@ impl CPUFinalizer64 {
     pub fn context(&self) -> &Context {
         &self.0
     }
+
+    fn calculate_indexes(chimp_output: &mut Vec<ChimpOutput64>, size: usize) -> Vec<u32> {
+        let mut indexes = chimp_output
+            .chunks(size)
+            .map(|chunk| (chunk.iter().map(|it| it.bit_count as u32).sum::<u32>() / 64u32) + 2u32)
+            .collect_vec();
+        (1..indexes.len()).for_each(|it| indexes[it] += indexes[it - 1]);
+        indexes
+    }
 }
 #[async_trait]
 impl Finalize for CPUFinalizer64 {
@@ -29,43 +38,63 @@ impl Finalize for CPUFinalizer64 {
         &self,
         chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
+        indexes: Vec<u32>,
     ) -> anyhow::Result<Vec<u8>> {
         let chimp_input_length = chimp_output.len() - padding;
         let _input_length = chimp_input_length;
-        let output_vec = vec![0u64; chimp_output.len()];
         let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
-        let indexes = vec![0u32; workgroup_count];
         let size = ChimpBufferInfo::get().buffer_size();
-        let mut writer =
-            CPUWriter64::new(chimp_output.to_owned(), output_vec, size as u32, indexes);
+        let output_vec = vec![0u64; (*indexes.last().unwrap() + 1) as usize];
+        let mut writer = CPUWriter64::new(
+            chimp_output.to_owned(),
+            output_vec,
+            size as u32,
+            ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32,
+            indexes,
+        );
         for workgroup in 0..max(workgroup_count, 1) {
-            writer.last_byte_index[workgroup] = writer.write((workgroup * size) as u32)
+            let _ = writer.write(
+                (workgroup * size) as u32,
+                writer.last_byte_index[workgroup],
+                (workgroup_count - 1 == workgroup) as u32,
+                writer.last_byte_index[workgroup + 1],
+            );
         }
 
-        let mut final_vec = Vec::<u8>::new();
-        for (i, useful_byte_count) in writer.last_byte_index.iter().enumerate() {
-            let start_index = i * ChimpBufferInfo::get().buffer_size();
-            let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
-            let temp_vec = writer.out_vec[start_index..=byte_count]
-                .iter()
-                .flat_map(|it| it.to_be_bytes())
-                .collect_vec();
-
-            let batch_size = if i == workgroup_count - 1
-                && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
-            {
-                ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
-            } else {
-                (ChimpBufferInfo::get().buffer_size() - 1) as u32
-            };
-            final_vec.extend(batch_size.to_be_bytes());
-            final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
-            final_vec.extend(temp_vec);
-        }
+        let mut final_vec = writer
+            .out_vec
+            .iter()
+            .flat_map(|it| it.to_le_bytes())
+            .collect_vec();
+        // for (i, useful_byte_count) in writer.last_byte_index.iter().enumerate() {
+        //     let start_index = i * ChimpBufferInfo::get().buffer_size();
+        //     let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
+        //     let temp_vec = writer.out_vec[start_index..=byte_count]
+        //         .iter()
+        //         .flat_map(|it| it.to_be_bytes())
+        //         .collect_vec();
+        //     assert_eq!(
+        //         temp_vec.len(),
+        //         (byte_count + 1 - start_index) * size_of::<u64>()
+        //     );
+        //     let batch_size = if i == workgroup_count - 1
+        //         && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
+        //     {
+        //         ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+        //     } else {
+        //         (ChimpBufferInfo::get().buffer_size() - 1) as u32
+        //     };
+        //     final_vec.extend(batch_size.to_be_bytes());
+        //     final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
+        //     final_vec.extend(temp_vec);
+        // }
         step!(&Step::Finalize, {
             final_vec
                 .iter()
-                .map(|it| format!("{:08b}\n", it))
+                .chunks(8)
+                .into_iter()
+                .map(|chunk| chunk.map(|it| format!("{:08b}", it)).join(" ") + "\n")
+                .collect_vec()
                 .into_iter()
         });
         Ok(final_vec)
@@ -76,6 +105,7 @@ pub struct CPUWriter64 {
     in_vec: Vec<ChimpOutput64>,
     out_vec: Vec<u64>,
     size: u32,
+    last_size: u32,
     last_byte_index: Vec<u32>,
 }
 
@@ -84,12 +114,14 @@ impl CPUWriter64 {
         in_vec: Vec<ChimpOutput64>,
         out_vec: Vec<u64>,
         size: u32,
+        last_size: u32,
         last_byte_index: Vec<u32>,
     ) -> Self {
         Self {
             in_vec,
             out_vec,
             size,
+            last_size,
             last_byte_index,
         }
     }
@@ -113,11 +145,19 @@ impl CPUWriter64 {
             0u32,
         );
     }
-    fn write(&mut self, idx: u32) -> u32 {
-        let mut current_i = idx + 1u32;
+    fn write(&mut self, idx: u32, out_idx: u32, is_last: u32, last_index: u32) -> u32 {
+        let mut current_i = out_idx + 2u32;
         let mut current_i_bits_left = 64u32;
 
-        self.out_vec[idx as usize] = self.in_vec[idx as usize].lower_bits;
+        self.out_vec[out_idx as usize] = (if is_last == 0 {
+            self.size - 1
+        } else {
+            self.last_size - 1
+        }) as u64;
+        self.out_vec[out_idx as usize] =
+            (self.out_vec[out_idx as usize] << 32u32) + ((last_index - out_idx - 1) * 8) as u64;
+
+        self.out_vec[(out_idx + 1u32) as usize] = self.in_vec[idx as usize].lower_bits;
         for i in idx + 1u32..idx + self.size {
             let chimp: ChimpOutput64 = self.in_vec[i as usize];
             let overflow_bits = (chimp.bit_count as i32) - 64;

@@ -1,3 +1,4 @@
+pub mod calculate_indexes;
 pub mod chimp_compress;
 pub mod compute_s;
 pub mod decompressor;

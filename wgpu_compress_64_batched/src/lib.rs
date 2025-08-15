@@ -1,6 +1,8 @@
+use crate::calculate_indexes::{CalculateIndexes64, GPUCalculateIndexes64};
 use crate::compute_s_shader::{ComputeS, ComputeSImpl};
 use crate::final_compress::{FinalCompress, FinalCompressImpl64};
 use crate::finalize::{Finalize, Finalizer64};
+use anyhow::Result;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
@@ -13,6 +15,7 @@ use pollster::FutureExt;
 use std::ops::Div;
 use std::sync::Arc;
 
+mod calculate_indexes;
 mod compute_s_shader;
 pub mod cpu;
 pub mod decompressor;
@@ -58,9 +61,11 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
         let mut total_millis = 0;
         let mut s_values: Vec<S>;
         let mut chimp_vec: Vec<ChimpOutput64>;
+        let mut indexes: Vec<u32>;
 
         let compute_s_impl = self.compute_s_factory();
         let final_compress_impl = self.compute_final_compress_factory();
+        let indexes_impl = self.calculate_index_factory();
         let finalize_impl = self.compute_finalize_factory();
 
         let output_vec: BitVec;
@@ -78,19 +83,28 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
                     .await?;
             },
             total_millis,
-            "final output stage"
+            "compression stage"
+        );
+        time_it!(
+            {
+                indexes = indexes_impl
+                    .calculate_indexes(&mut chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
+                    .await?;
+            },
+            total_millis,
+            "calculate trim size stage"
         );
         time_it!(
             {
                 output_vec = BitVec::from_bytes(
                     finalize_impl
-                        .finalize(&mut chimp_vec, padding.0)
+                        .finalize(&mut chimp_vec, padding.0, indexes)
                         .await?
                         .as_slice(),
                 );
             },
             total_millis,
-            "final Result collection"
+            "trimming stage"
         );
         Ok(output_vec.to_bytes())
     }
@@ -118,6 +132,21 @@ impl ComputeS for ComputeS64Impls {
         }
     }
 }
+
+enum CalculateIndexesImpls {
+    GPU(GPUCalculateIndexes64),
+    CPU(cpu::calculate_indexes::CPUCalculateIndexes64),
+}
+#[async_trait]
+impl CalculateIndexes64 for CalculateIndexesImpls {
+    async fn calculate_indexes(&self, input: &[ChimpOutput64], size: u32) -> Result<Vec<u32>> {
+        match self {
+            CalculateIndexesImpls::GPU(c) => c.calculate_indexes(input, size).await,
+            CalculateIndexesImpls::CPU(c) => c.calculate_indexes(input, size).await,
+        }
+    }
+}
+
 enum Compress64Impls {
     GPU(FinalCompressImpl64),
     CPU(cpu::chimp_compress::CPUFinalCompressImpl64),
@@ -157,10 +186,11 @@ impl Finalize for Finalizer64impls {
         &self,
         chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
+        indexes: Vec<u32>,
     ) -> anyhow::Result<Vec<u8>> {
         match self {
-            Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding).await,
-            Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding).await,
+            Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding, indexes).await,
+            Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding, indexes).await,
         }
     }
 }
@@ -190,6 +220,16 @@ impl ChimpCompressorBatched64 {
             &DeviceEnum::CPU => {
                 Finalizer64impls::CPU(cpu::finalize::CPUFinalizer64::new(self.context.clone()))
             }
+        }
+    }
+    fn calculate_index_factory(&self) -> CalculateIndexesImpls {
+        match self.device_type() {
+            &DeviceEnum::GPU => {
+                CalculateIndexesImpls::GPU(GPUCalculateIndexes64::new(self.context.clone()))
+            }
+            &DeviceEnum::CPU => CalculateIndexesImpls::CPU(
+                cpu::calculate_indexes::CPUCalculateIndexes64::new(self.context.clone()),
+            ),
         }
     }
     pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
@@ -228,7 +268,7 @@ mod tests {
     use crate::{decompressor, merger, splitter, ChimpCompressorBatched64};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
-    use compress_utils::general_utils::DeviceEnum::{CPU, GPU};
+    use compress_utils::general_utils::DeviceEnum::CPU;
     use env::set_var;
     use indicatif::ProgressIterator;
     use itertools::Itertools;
@@ -238,8 +278,7 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
-    use wgpu_compress_32_batched::cpu;
-    use wgpu_compress_32_batched::cpu::decompressor::DebugBatchDecompressorCpu;
+    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn splitter_merger() {
@@ -334,27 +373,27 @@ mod tests {
     }
     #[test]
     fn test_decompress_able_64() {
-        // let subscriber = tracing_subscriber::fmt()
-        //     .compact()
-        //     .with_env_filter("wgpu_compress_32=info")
-        //     // .with_writer(
-        //     //     OpenOptions::new()
-        //     //         .create(true)
-        //     //         .truncate(true)
-        //     //         .write(true)
-        //     //         .open("run.log")
-        //     //         .unwrap(),
-        //     // )
-        //     .finish();
-        // subscriber.init();
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_64_batched=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
+            .finish();
+        subscriber.init();
         let context = Arc::new(
-            Context::initialize_with_adapter("NVIDIA".to_string())
+            Context::initialize_with_adapter("Intel".to_string())
                 .block_on()
                 .unwrap(),
         );
         for file_name in vec![
-            "city_temperature.csv",
-            "SSD_HDD_benchmarks.csv",
+            // "city_temperature.csv",
+            // "SSD_HDD_benchmarks.csv",
             "Stocks-Germany-sample.txt",
         ]
         .into_iter()
@@ -368,7 +407,7 @@ mod tests {
             let values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
-            for size_checkpoint in (1..11).progress() {
+            for size_checkpoint in (8..9).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
 
                 let s = value_new

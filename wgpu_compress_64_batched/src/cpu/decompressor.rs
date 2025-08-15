@@ -56,7 +56,7 @@ impl Decompressor<f64> for CPUDecompressorBatched64 {
                     while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
                         byte_window = rest;
                         //parse u32 from groups of 8 bytes
-                        let value_u64 = u64::from_be_bytes(first_four_bytes.try_into().unwrap());
+                        let value_u64 = u64::from_le_bytes(first_four_bytes.try_into().unwrap());
                         vec_window.push(value_u64);
                     }
                     input_indexes.push(vec_window.len() as u32);

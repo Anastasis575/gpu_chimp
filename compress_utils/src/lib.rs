@@ -692,6 +692,7 @@ pub mod general_utils {
     pub enum Step {
         ComputeS,
         Compress,
+        CalculateIndexes,
         Finalize,
         Decompress,
     }
@@ -729,6 +730,13 @@ pub mod general_utils {
                     fs::create_dir_all("./traces/decompress/").unwrap();
                     PathBuf::from(format!(
                         "./traces/decompress/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
+                }
+                Step::CalculateIndexes => {
+                    fs::create_dir_all("./traces/calculate_indexes/").unwrap();
+                    PathBuf::from(format!(
+                        "./traces/calculate_indexes/trace_{}.log",
                         chrono::Local::now().to_utc()
                     ))
                 }
