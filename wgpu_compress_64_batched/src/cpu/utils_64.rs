@@ -1,15 +1,6 @@
 use std::cmp::min;
 use std::ops::{AddAssign, Mul};
 
-pub struct OutputTemp {
-    x: u64,
-    y: u64,
-}
-pub struct Output64 {
-    pub(crate) upper_bits: u64,
-    pub(crate) lower_bits: u64, //because there is a scenario where 32 bits are not enough to reprisent the outcome
-    pub(crate) bit_count: u32,
-}
 #[allow(non_camel_case_types)]
 pub struct vec2<T>(pub(crate) T, pub(crate) T);
 pub fn pseudo_u64_shift(output: vec2<u64>, number: u32) -> vec2<u64> {

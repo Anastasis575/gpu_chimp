@@ -1,15 +1,12 @@
 use crate::cpu::utils_64;
-use crate::decompressor::GPUDecompressorBatched64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::DeviceEnum::GPU;
-use compress_utils::general_utils::{trace_steps, DeviceEnum};
+use compress_utils::general_utils::trace_steps;
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{step, time_it};
 use itertools::Itertools;
 use log::info;
-use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
