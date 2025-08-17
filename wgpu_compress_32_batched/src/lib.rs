@@ -72,7 +72,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let final_compress_impl = self.compute_final_compress_factory();
         let finalize_impl = self.compute_finalize_factory();
 
-        let output_vec: BitVec;
+        let output_vec: Vec<u8>;
         time_it!(
             {
                 s_values = compute_s_impl.compute_s(&mut values).await?;
@@ -91,18 +91,13 @@ impl Compressor<f32> for ChimpCompressorBatched {
         );
         time_it!(
             {
-                output_vec = BitVec::from_bytes(
-                    finalize_impl
-                        .finalize(&mut chimp_vec, padding.0)
-                        .await?
-                        .as_slice(),
-                );
+                output_vec = finalize_impl.finalize(&mut chimp_vec, padding.0).await?;
             },
             total_millis,
             "final Result collection"
         );
 
-        Ok(output_vec.to_bytes())
+        Ok(output_vec)
     }
 }
 
@@ -257,6 +252,19 @@ mod tests {
     //noinspection DuplicatedCode
     #[test]
     fn test_decompress_able() {
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_32=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
+            .finish();
+        subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
@@ -330,6 +338,19 @@ mod tests {
     }
     #[test]
     fn test_decompress_able_buffer() {
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_32=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
+            .finish();
+        subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()

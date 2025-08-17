@@ -135,7 +135,7 @@ impl Finalize for Finalizer {
             let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
             let temp_vec = output[start_index..=byte_count]
                 .iter()
-                .flat_map(|it| it.to_be_bytes())
+                .flat_map(|it| it.to_le_bytes())
                 .collect_vec();
 
             let batch_size = if i == workgroup_count - 1
@@ -145,8 +145,8 @@ impl Finalize for Finalizer {
             } else {
                 (ChimpBufferInfo::get().buffer_size() - 1) as u32
             };
-            final_vec.extend(batch_size.to_be_bytes());
-            final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
+            final_vec.extend(batch_size.to_le_bytes());
+            final_vec.extend((temp_vec.len() as u32).to_le_bytes().iter());
             final_vec.extend(temp_vec);
         }
         if trace_steps().contains(&Step::Finalize) {

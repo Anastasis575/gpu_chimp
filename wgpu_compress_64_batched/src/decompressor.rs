@@ -109,18 +109,18 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
-                    let size_in_bytes = u32::from_le_bytes(
-                        compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                            .try_into()
-                            .unwrap(),
-                    );
-                    current_index += size_of::<u32>();
                     let buffer_value_count = u32::from_le_bytes(
                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
                     ) as usize
                         + 1;
+                    current_index += size_of::<u32>();
+                    let size_in_bytes = u32::from_le_bytes(
+                        compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
+                            .try_into()
+                            .unwrap(),
+                    );
                     current_index += size_of::<u32>();
 
                     let byte_window_vec = compressed_bytes_vec

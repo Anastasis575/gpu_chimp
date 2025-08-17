@@ -27,7 +27,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
-                    let buffer_value_count = u32::from_be_bytes(
+                    let buffer_value_count = u32::from_le_bytes(
                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
@@ -35,7 +35,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                         + 1;
                     current_index += size_of::<u32>();
 
-                    let size_in_bytes = u32::from_be_bytes(
+                    let size_in_bytes = u32::from_le_bytes(
                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                             .try_into()
                             .unwrap(),
@@ -53,7 +53,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                     while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(4) {
                         byte_window = rest;
                         //parse u32 from groups of 4 bytes
-                        let value_u32 = u32::from_be_bytes(first_four_bytes.try_into().unwrap());
+                        let value_u32 = u32::from_le_bytes(first_four_bytes.try_into().unwrap());
                         vec_window.push(value_u32);
                     }
                     input_indexes.push(vec_window.len() as u32);

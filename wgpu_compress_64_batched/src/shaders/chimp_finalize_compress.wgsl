@@ -1,10 +1,10 @@
 @group(0)
 @binding(2)
 var<uniform> size: u32;
-
-@group(0)
-@binding(4)
-var<uniform> last_size: u32;
+//
+//@group(0)
+//@binding(4)
+//var<uniform> last_size: u32;
 
 
 @group(0)
@@ -41,8 +41,8 @@ fn get_insert_index(bits_rest_to_write: u32, writeable_output_remaining: u32) ->
     );
 }
 
-fn write(idx:u32,out_idx: u32, is_last: u32, last_index: u32)->u32{
-    var current_i=out_idx+2u;
+fn write(idx:u32)->u32{
+    var current_i=idx+1u;
     var current_i_bits_left=64u;
     
     var bits_to_add=0u;
@@ -50,10 +50,8 @@ fn write(idx:u32,out_idx: u32, is_last: u32, last_index: u32)->u32{
 
     var rest_bits=0u;
     var rest_fit=0;
-    
-    out[out_idx]=u64(is_last*(last_size - 1u)+(1-is_last)*(size- 1u));
-    out[out_idx]=(out[out_idx]<<32u) +u64((last_index - out_idx - 1u) * 8u);
-    out[out_idx+1u]=in[idx].lower_bits;
+
+    out[idx]=in[idx].lower_bits;
     for (var i: u32 = idx+1u; i < idx+size; i++) {
         var chimp:Output64=in[i];
         var overflow_bits=i32(chimp.bit_count) - 64;
@@ -131,7 +129,6 @@ fn write(idx:u32,out_idx: u32, is_last: u32, last_index: u32)->u32{
 
 @compute
 @workgroup_size(1)
-fn main(@builtin(workgroup_id) global_id: vec3<u32>,@builtin(num_workgroups) num_workgroups:vec3<u32> ) {
-//    out[global_id.x]=u64(last_byte_index[global_id.x]);
-    write(global_id.x*size,last_byte_index[global_id.x],u32(global_id.x==num_workgroups.x- 1u),last_byte_index[global_id.x+1u] );
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    last_byte_index[global_id.x]=write(global_id.x*size);
 }

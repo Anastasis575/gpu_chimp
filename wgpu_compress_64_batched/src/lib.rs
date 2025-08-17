@@ -68,7 +68,7 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
         let indexes_impl = self.calculate_index_factory();
         let finalize_impl = self.compute_finalize_factory();
 
-        let output_vec: BitVec;
+        let output_vec: Vec<u8>;
         time_it!(
             {
                 s_values = compute_s_impl.compute_s(&mut values).await?;
@@ -85,28 +85,25 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
             total_millis,
             "compression stage"
         );
+        // time_it!(
+        //     {
+        //         indexes = indexes_impl
+        //             .calculate_indexes(&mut chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
+        //             .await?;
+        //     },
+        //     total_millis,
+        //     "calculate trim size stage"
+        // );
         time_it!(
             {
-                indexes = indexes_impl
-                    .calculate_indexes(&mut chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
+                output_vec = finalize_impl
+                    .finalize(&mut chimp_vec, padding.0, Vec::new())
                     .await?;
-            },
-            total_millis,
-            "calculate trim size stage"
-        );
-        time_it!(
-            {
-                output_vec = BitVec::from_bytes(
-                    finalize_impl
-                        .finalize(&mut chimp_vec, padding.0, indexes)
-                        .await?
-                        .as_slice(),
-                );
             },
             total_millis,
             "trimming stage"
         );
-        Ok(output_vec.to_bytes())
+        Ok(output_vec)
     }
 }
 enum ComputeS64Impls {
@@ -305,6 +302,19 @@ mod tests {
     }
     #[test]
     fn test_decompress_able_buffer() {
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_64_batched=info")
+            // .with_writer(
+            //     OpenOptions::new()
+            //         .create(true)
+            //         .truncate(true)
+            //         .write(true)
+            //         .open("run.log")
+            //         .unwrap(),
+            // )
+            .finish();
+        subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
@@ -392,8 +402,8 @@ mod tests {
                 .unwrap(),
         );
         for file_name in vec![
-            // "city_temperature.csv",
-            // "SSD_HDD_benchmarks.csv",
+            "city_temperature.csv",
+            "SSD_HDD_benchmarks.csv",
             "Stocks-Germany-sample.txt",
         ]
         .into_iter()
@@ -407,7 +417,7 @@ mod tests {
             let values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
-            for size_checkpoint in (8..9).progress() {
+            for size_checkpoint in (1..11).progress() {
                 let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
 
                 let s = value_new
