@@ -1,4 +1,5 @@
 use crate::bit_utils::{BitReadable, BitWritable, ToBitVec};
+use crate::general_utils::CompressResult;
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use thiserror::Error;
@@ -42,7 +43,7 @@ impl CPUCompressor {
 
 #[async_trait]
 pub trait Compressor<T> {
-    async fn compress(&self, vec: &mut Vec<T>) -> Result<Vec<u8>, CompressionError>;
+    async fn compress(&self, vec: &mut Vec<T>) -> Result<CompressResult, CompressionError>;
 }
 
 #[async_trait]
@@ -51,7 +52,7 @@ pub trait Decompressor<T> {
 }
 #[async_trait]
 impl Compressor<f32> for CPUCompressor {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         let mut bit_vec = vec[0].to_bits().to_bit_vec();
         let mut last_lead = 0;
         for i in 1..vec.len() {
@@ -87,7 +88,7 @@ impl Compressor<f32> for CPUCompressor {
             }
             last_lead = lead;
         }
-        Ok(bit_vec.to_bytes())
+        Ok(CompressResult(bit_vec.to_bytes(), 0))
     }
 }
 
@@ -243,7 +244,7 @@ impl<T> Compressor<f32> for TimedCompressor<T>
 where
     T: Compressor<f32> + Send + Sync,
 {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
         log::info!("Started cpu compression stage");

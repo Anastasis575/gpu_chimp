@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult, Step};
 use compress_utils::types::ChimpOutput64;
 use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
@@ -19,7 +19,7 @@ pub trait Finalize {
         chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
         indexes: Vec<u32>,
-    ) -> Result<Vec<u8>>;
+    ) -> Result<CompressResult>;
 }
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl Finalize for Finalizer64 {
         chimp_input: &mut Vec<ChimpOutput64>,
         padding: usize,
         indexes: Vec<u32>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<CompressResult> {
         let util_64 = include_str!("shaders/64_utils.wgsl");
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
             .replace("//#include(64_utils)", util_64)
@@ -108,7 +108,8 @@ impl Finalize for Finalizer64 {
                 &useful_byte_count_storage,
                 &useful_byte_count_staging,
             ],
-            workgroup_count
+            workgroup_count,
+            Some("trim pass")
         );
 
         let output = wgpu_utils::get_s_output::<u64>(
@@ -155,6 +156,6 @@ impl Finalize for Finalizer64 {
                 .collect_vec()
                 .into_iter()
         });
-        Ok(final_vec)
+        Ok(CompressResult(final_vec, workgroup_count * 8))
     }
 }

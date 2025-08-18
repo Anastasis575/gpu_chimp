@@ -150,7 +150,7 @@ pub mod wgpu_utils {
     use anyhow::Result;
     use bytemuck::Pod;
     use thiserror::Error;
-    use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, ShaderModule};
+    use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Label, ShaderModule};
     use wgpu_types::PollType::Wait;
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
@@ -265,6 +265,7 @@ pub mod wgpu_utils {
         context: &Context,
         bind_group_layout: &BindGroupLayout,
         buffers: Vec<&BufferWrapper>,
+        label: Option<&'static str>,
     ) -> BindGroup {
         let mut entries = Vec::<wgpu::BindGroupEntry>::new();
         let mut count = 0;
@@ -290,7 +291,11 @@ pub mod wgpu_utils {
         context
             .device()
             .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("s_calculation_layout"),
+                label: if let Some(it) = label {
+                    Some(it)
+                } else {
+                    Label::None
+                },
                 layout: bind_group_layout,
                 entries: entries.as_slice(),
             })
@@ -410,12 +415,41 @@ pub mod general_utils {
     use log::warn;
     use std::collections::HashSet;
 
+    use serde::{Deserialize, Serialize};
     use std::fs;
     use std::fs::OpenOptions;
     use std::ops::Div;
     use std::path::PathBuf;
     use std::str::FromStr;
 
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    pub struct CompressResult(pub Vec<u8>, pub usize);
+    impl CompressResult {
+        pub fn compressed_value_ref(&self) -> &Vec<u8> {
+            &self.0
+        }
+
+        pub fn compressed_value(self) -> Vec<u8> {
+            self.0
+        }
+        pub fn compressed_value_mut(&mut self) -> &mut Vec<u8> {
+            &mut self.0
+        }
+        pub fn metadata_size(&self) -> usize {
+            self.1
+        }
+    }
+    impl From<CompressResult> for Vec<u8> {
+        fn from(value: CompressResult) -> Self {
+            value.0
+        }
+    }
+
+    impl From<Vec<u8>> for CompressResult {
+        fn from(value: Vec<u8>) -> Self {
+            Self(value, 0usize)
+        }
+    }
     pub trait MaxGroupGnostic {
         fn get_max_number_of_groups(&self, content_len: usize) -> usize;
     }
@@ -556,7 +590,7 @@ pub mod general_utils {
     /// ```
     #[macro_export]
     macro_rules! execute_compute_shader {
-        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr) => {
+        ($context:expr,$shader_source:expr,$buffers:expr,$dispatch_size:expr,$binding_label:expr) => {
             let compute_shader_module =
                 wgpu_utils::create_shader_module($context.device(), $shader_source)?;
 
@@ -569,8 +603,12 @@ pub mod general_utils {
                 Some("Compute s pipeline"),
             )?;
 
-            let binding_group =
-                wgpu_utils::create_bind_group($context, &binding_group_layout, $buffers);
+            let binding_group = wgpu_utils::create_bind_group(
+                $context,
+                &binding_group_layout,
+                $buffers,
+                $binding_label,
+            );
 
             let mut s_encoder = $context
                 .device()

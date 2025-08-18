@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{ChimpBufferInfo, DeviceEnum, MaxGroupGnostic, Padding};
+use compress_utils::general_utils::{
+    ChimpBufferInfo, CompressResult, DeviceEnum, MaxGroupGnostic, Padding,
+};
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput64, S};
 use log::info;
@@ -53,59 +55,69 @@ pub fn add_padding_to_fit_buffer_count_64(
 
 #[async_trait]
 impl Compressor<f64> for ChimpCompressorBatched64 {
-    async fn compress(&self, vec: &mut Vec<f64>) -> Result<Vec<u8>, CompressionError> {
-        let mut padding = Padding(0);
-        let buffer_size = ChimpBufferInfo::get().buffer_size();
-        let mut values = vec.to_owned();
-        values = add_padding_to_fit_buffer_count_64(values, buffer_size, &mut padding);
-        let mut total_millis = 0;
-        let mut s_values: Vec<S>;
-        let mut chimp_vec: Vec<ChimpOutput64>;
-        let mut indexes: Vec<u32>;
-
+    async fn compress(&self, vec: &mut Vec<f64>) -> Result<CompressResult, CompressionError> {
         let compute_s_impl = self.compute_s_factory();
         let final_compress_impl = self.compute_final_compress_factory();
         let indexes_impl = self.calculate_index_factory();
         let finalize_impl = self.compute_finalize_factory();
 
-        let output_vec: Vec<u8>;
-        time_it!(
-            {
-                s_values = compute_s_impl.compute_s(&mut values).await?;
-            },
-            total_millis,
-            "s computation stage"
-        );
-        time_it!(
-            {
-                chimp_vec = final_compress_impl
-                    .final_compress(&mut values, &mut s_values, 0)
-                    .await?;
-            },
-            total_millis,
-            "compression stage"
-        );
-        // time_it!(
-        //     {
-        //         indexes = indexes_impl
-        //             .calculate_indexes(&mut chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
-        //             .await?;
-        //     },
-        //     total_millis,
-        //     "calculate trim size stage"
-        // );
-        time_it!(
-            {
-                output_vec = finalize_impl
-                    .finalize(&mut chimp_vec, padding.0, Vec::new())
-                    .await?;
-            },
-            total_millis,
-            "trimming stage"
-        );
-        Ok(output_vec)
+        let mut iterations = self.split_by_max_gpu_buffer_size(vec);
+        let mut byte_stream = Vec::new();
+        let mut metadata = 0;
+        for iteration_values in iterations {
+            let mut total_millis = 0;
+            let mut values = iteration_values;
+            let mut output_vec: CompressResult;
+            let mut s_values: Vec<S>;
+            let mut chimp_vec: Vec<ChimpOutput64>;
+            let mut indexes: Vec<u32>;
+            let mut padding = Padding(0);
+            let buffer_size = ChimpBufferInfo::get().buffer_size();
+            values = add_padding_to_fit_buffer_count_64(values, buffer_size, &mut padding);
+            time_it!(
+                {
+                    s_values = compute_s_impl.compute_s(&mut values).await?;
+                },
+                total_millis,
+                "s computation stage"
+            );
+            time_it!(
+                {
+                    chimp_vec = final_compress_impl
+                        .final_compress(&mut values, &mut s_values, 0)
+                        .await?;
+                },
+                total_millis,
+                "compression stage"
+            );
+            time_it!(
+                {
+                    indexes = indexes_impl
+                        .calculate_indexes(
+                            &mut chimp_vec,
+                            ChimpBufferInfo::get().buffer_size() as u32,
+                        )
+                        .await?;
+                },
+                total_millis,
+                "calculate trim size stage"
+            );
+            time_it!(
+                {
+                    output_vec = finalize_impl
+                        .finalize(&mut chimp_vec, padding.0, indexes)
+                        .await?;
+                },
+                total_millis,
+                "trimming stage"
+            );
+            byte_stream.extend(output_vec.compressed_value_ref());
+            metadata += output_vec.metadata_size();
+        }
+        Ok(CompressResult(byte_stream, metadata))
     }
 }
+
 enum ComputeS64Impls {
     GPU(ComputeSImpl),
     CPU(cpu::compute_s::CpuComputeSImpl),
@@ -184,7 +196,7 @@ impl Finalize for Finalizer64impls {
         chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
         indexes: Vec<u32>,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<CompressResult> {
         match self {
             Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding, indexes).await,
             Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding, indexes).await,
@@ -193,6 +205,7 @@ impl Finalize for Finalizer64impls {
 }
 #[allow(unused)]
 impl ChimpCompressorBatched64 {
+    pub const MAX_BUFFER_SIZE_BYTES: usize = 134217728;
     fn compute_s_factory(&self) -> ComputeS64Impls {
         match self.device_type() {
             DeviceEnum::GPU => ComputeS64Impls::GPU(ComputeSImpl::new(self.context.clone())),
@@ -200,6 +213,10 @@ impl ChimpCompressorBatched64 {
                 ComputeS64Impls::CPU(cpu::compute_s::CpuComputeSImpl::new(self.context.clone()))
             }
         }
+    }
+    fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f64>) -> impl Iterator<Item = Vec<f64>> {
+        let split_by = Self::MAX_BUFFER_SIZE_BYTES / size_of::<ChimpOutput64>(); //The most costly buffer
+        vec.chunks(split_by - 1).map(|it| it.to_vec())
     }
     fn compute_final_compress_factory(&self) -> Compress64Impls {
         match self.device_type() {
@@ -270,8 +287,9 @@ mod tests {
     use indicatif::ProgressIterator;
     use itertools::Itertools;
     use pollster::FutureExt;
-    use std::fs::OpenOptions;
-    use std::io::Write;
+    use std::cmp::min;
+    use std::fs::{File, OpenOptions};
+    use std::io::{BufReader, Write};
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
@@ -343,22 +361,29 @@ mod tests {
                 let compression_time = time.elapsed().as_millis();
 
                 const SIZE_IN_BYTE: usize = 8;
-                let compression_ratio =
-                    (compressed_values2.len() * SIZE_IN_BYTE) as f64 / value_new.len() as f64;
+                let compression_ratio = (compressed_values2.compressed_value_ref().len()
+                    * SIZE_IN_BYTE) as f64
+                    / value_new.len() as f64;
                 messages.push(format!(
-                    "Compression ratio {size_checkpoint}0% {compression_ratio}\n"
+                    "Compression ratio {} values: {compression_ratio}\n",
+                    value_new.len()
                 ));
                 messages.push(format!(
-                    "Encoding time {size_checkpoint}0%: {compression_time}\n"
+                    "Encoding time {} values: {compression_time}\n",
+                    value_new.len()
                 ));
 
                 let time = std::time::Instant::now();
                 let decompressor = decompressor::ChimpDecompressorBatched64::new(context.clone());
-                match decompressor.decompress(&mut compressed_values2).block_on() {
+                match decompressor
+                    .decompress(compressed_values2.compressed_value_mut())
+                    .block_on()
+                {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
                         messages.push(format!(
-                            "Decoding time {size_checkpoint}0%: {decompression_time}\n"
+                            "Decoding time {} values: {decompression_time}\n",
+                            value_new.len()
                         ));
                         fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
                         fs::write("expected.log", value_new.iter().join("\n")).unwrap();
@@ -383,21 +408,21 @@ mod tests {
     }
     #[test]
     fn test_decompress_able_64() {
-        let subscriber = tracing_subscriber::fmt()
-            .compact()
-            .with_env_filter("wgpu_compress_64_batched=info")
-            // .with_writer(
-            //     OpenOptions::new()
-            //         .create(true)
-            //         .truncate(true)
-            //         .write(true)
-            //         .open("run.log")
-            //         .unwrap(),
-            // )
-            .finish();
-        subscriber.init();
+        // let subscriber = tracing_subscriber::fmt()
+        //     .compact()
+        //     .with_env_filter("wgpu_compress_64_batched=info")
+        //     // .with_writer(
+        //     //     OpenOptions::new()
+        //     //         .create(true)
+        //     //         .truncate(true)
+        //     //         .write(true)
+        //     //         .open("run.log")
+        //     //         .unwrap(),
+        //     // )
+        //     .finish();
+        // subscriber.init();
         let context = Arc::new(
-            Context::initialize_with_adapter("Intel".to_string())
+            Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
                 .unwrap(),
         );
@@ -414,19 +439,21 @@ mod tests {
                 fs::remove_file(&filename).unwrap();
             }
             let mut messages = Vec::<String>::with_capacity(30);
-            let values = get_values(file_name)
+            let mut values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
-            for size_checkpoint in (1..11).progress() {
-                let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
+            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            println!("{}", reader.max_size());
+            for size_checkpoint in 1..11 {
+                while let Some(block) = reader.next() {
+                    values.extend(block);
+                    if values.len() >= (size_checkpoint * reader.max_size()) / 100 {
+                        break;
+                    }
+                }
+                let mut value_new = values.clone();
 
-                let s = value_new
-                    .iter()
-                    .map(|it| format!("{:064b}", it.to_bits()))
-                    .join("\n");
-                fs::write("values", s).unwrap();
-
-                log::info!("Starting compression of {} values", values.len());
+                println!("Starting compression of {} values", value_new.len());
                 let time = std::time::Instant::now();
                 let compressor = ChimpCompressorBatched64::new(context.clone()); //.with_device(CPU);
                 let mut compressed_values2 =
@@ -434,25 +461,32 @@ mod tests {
                 let compression_time = time.elapsed().as_millis();
 
                 const SIZE_IN_BYTE: usize = 8;
-                let compression_ratio =
-                    (compressed_values2.len() * SIZE_IN_BYTE) as f64 / value_new.len() as f64;
+                let compression_ratio = (compressed_values2.compressed_value_ref().len()
+                    * SIZE_IN_BYTE) as f64
+                    / value_new.len() as f64;
                 messages.push(format!(
-                    "Compression ratio {size_checkpoint}0% {compression_ratio}\n"
+                    "Compression ratio {} values: {compression_ratio}\n",
+                    value_new.len()
                 ));
                 messages.push(format!(
-                    "Encoding time {size_checkpoint}0%: {compression_time}\n"
+                    "Encoding time {} values: {compression_time}\n",
+                    value_new.len()
                 ));
 
                 let time = std::time::Instant::now();
                 let decompressor = decompressor::GPUDecompressorBatched64::new(context.clone());
-                match decompressor.decompress(&mut compressed_values2).block_on() {
+                match decompressor
+                    .decompress(compressed_values2.compressed_value_mut())
+                    .block_on()
+                {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
                         messages.push(format!(
-                            "Decoding time {size_checkpoint}0%: {decompression_time}\n"
+                            "Decoding time {} values:  {decompression_time}\n",
+                            value_new.len()
                         ));
-                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
@@ -464,7 +498,7 @@ mod tests {
             let f = OpenOptions::new()
                 .append(true)
                 .create(true)
-                .open(file_name)
+                .open(filename)
                 .expect("temp");
             let mut fw = f.make_writer();
             for message in messages {
@@ -480,18 +514,75 @@ mod tests {
             .get(2)
             .map(|it| it.to_string())
     }
+
+    struct TimeSeriesReader {
+        minimum_block_size: usize,
+        block_size: usize,
+        current_block: usize,
+        source_value: Vec<f64>,
+        current_index: usize,
+    }
+
+    impl TimeSeriesReader {
+        pub fn new(block_size: usize, source_value: Vec<f64>, minimum_block_size: usize) -> Self {
+            Self {
+                minimum_block_size,
+                block_size: min(block_size, source_value.len()),
+                current_block: 0,
+                source_value,
+                current_index: 0,
+            }
+        }
+        pub fn max_size(&self) -> usize {
+            let len = self.source_value.len();
+            let mut max = len;
+            while max < self.minimum_block_size {
+                max += self.block_size;
+            }
+            max
+        }
+    }
+
+    impl Iterator for TimeSeriesReader {
+        type Item = Vec<f64>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let mut block = Vec::<f64>::with_capacity(self.block_size);
+            if self.current_index < self.minimum_block_size {
+                if self.block_size + self.current_index > self.source_value.len() {
+                    let remaining = self.block_size + self.current_index - self.source_value.len();
+                    block.extend(&self.source_value[self.current_index..]);
+                    block.extend(&self.source_value[0..remaining]);
+                    self.current_index = remaining - 1;
+                    Some(block)
+                } else {
+                    block.extend(
+                        &self.source_value
+                            [self.current_index..self.current_index + self.block_size],
+                    );
+                    self.current_index += self.block_size;
+                    Some(block)
+                }
+            } else {
+                None
+            }
+        }
+    }
+
     //noinspection ALL
     fn get_values(file_name: impl Into<String>) -> anyhow::Result<Vec<f64>> {
         let dir = env::current_dir()?;
         let file_path = dir.parent().unwrap().join(file_name.into());
         let file_txt = fs::read_to_string(file_path)?;
-        let values = file_txt
-            .split("\n")
-            .map(get_third)
-            .filter(|p| p.is_some())
-            .map(|s| s.unwrap().parse::<f64>().unwrap())
-            .collect_vec()
-            .to_vec();
+        let mut values = Vec::new();
+        values.extend(
+            file_txt
+                .split("\n")
+                .map(get_third)
+                .filter(|p| p.is_some())
+                .map(|s| s.unwrap().parse::<f64>().unwrap())
+                .into_iter(),
+        );
         Ok(values)
     }
 

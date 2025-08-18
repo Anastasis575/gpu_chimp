@@ -109,7 +109,8 @@ impl FinalCompress for FinalCompressImpl64 {
                 &output_staging_buffer,
                 &chunks_buffer,
             ],
-            workgroup_count
+            workgroup_count,
+            Some("compress pass")
         );
 
         let output = wgpu_utils::get_s_output::<ChimpOutput64>(

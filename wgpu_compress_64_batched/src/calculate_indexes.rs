@@ -71,7 +71,8 @@ impl CalculateIndexes64 for GPUCalculateIndexes64 {
                 &in_storage_buffer,
                 &size_uniform,
             ],
-            workgroup_count
+            workgroup_count,
+            Some("calculate indexes pass")
         );
 
         let mut output = wgpu_utils::get_s_output::<u32>(
@@ -117,7 +118,8 @@ impl CalculateIndexes64 for GPUCalculateIndexes64 {
             }
             "#,
             vec![&out_stage_buffer, &out_storage_buffer, &size_uniform],
-            1
+            1,
+            Some("add sizes pass")
         );
         let mut output = wgpu_utils::get_s_output::<u32>(
             self.context(),

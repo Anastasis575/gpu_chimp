@@ -2,7 +2,7 @@ use crate::cpu::utils_64::{extract_bits, insert_bits};
 use crate::finalize::Finalize;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::trace_steps;
+use compress_utils::general_utils::{trace_steps, CompressResult};
 use compress_utils::general_utils::{ChimpBufferInfo, Step};
 use compress_utils::step;
 use compress_utils::types::ChimpOutput64;
@@ -39,7 +39,7 @@ impl Finalize for CPUFinalizer64 {
         chimp_output: &mut Vec<ChimpOutput64>,
         padding: usize,
         indexes: Vec<u32>,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<CompressResult> {
         let chimp_input_length = chimp_output.len() - padding;
         let _input_length = chimp_input_length;
         let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
@@ -97,7 +97,7 @@ impl Finalize for CPUFinalizer64 {
                 .collect_vec()
                 .into_iter()
         });
-        Ok(final_vec)
+        Ok(CompressResult(final_vec, workgroup_count * 8))
     }
 }
 

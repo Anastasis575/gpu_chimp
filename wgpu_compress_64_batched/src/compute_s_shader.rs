@@ -106,7 +106,8 @@ impl ComputeS for ComputeSImpl {
                 &s_staging_buffer,
                 &chunks_buffer
             ],
-            workgroup_count
+            workgroup_count,
+            Some("calculate s pass")
         );
 
         let output = wgpu_utils::get_s_output::<S>(
