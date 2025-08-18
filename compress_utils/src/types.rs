@@ -3,6 +3,7 @@ use crate::bit_utils::ToBitVec;
 use std::fmt;
 use std::fmt::Formatter;
 
+#[allow(dead_code, unused)]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput {
@@ -59,6 +60,7 @@ impl fmt::Display for ChimpOutput {
     }
 }
 
+#[allow(dead_code, unused)]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput64 {
@@ -115,9 +117,9 @@ impl fmt::Display for ChimpOutput64 {
     }
 }
 
+#[allow(dead_code, unused)]
 #[repr(C)]
 #[derive(Clone, Default, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-#[allow(dead_code, unused)]
 pub struct S {
     pub head: i32,
     pub tail: i32,

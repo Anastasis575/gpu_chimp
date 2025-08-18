@@ -11,7 +11,6 @@ use log::info;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
-use wgpu_compress_32_batched::ChimpCompressorBatched;
 
 pub struct CPUDecompressorBatched64 {
     context: Arc<Context>,

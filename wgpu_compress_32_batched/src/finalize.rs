@@ -1,9 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult, Step};
 use compress_utils::types::ChimpOutput;
-use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{
+    execute_compute_shader, general_utils, wgpu_utils, BufferWrapper, WgpuGroupId,
+};
 use itertools::Itertools;
 use log::info;
 use std::cmp::{max, min};
@@ -18,7 +20,7 @@ pub trait Finalize {
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
         padding: usize,
-    ) -> Result<Vec<u8>>;
+    ) -> Result<general_utils::CompressResult>;
 }
 
 #[derive(Debug)]
@@ -50,11 +52,13 @@ impl Finalize for Finalizer {
         &self,
         chimp_input: &mut Vec<ChimpOutput>,
         padding: usize,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<CompressResult> {
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
         // let size_of_chimp = size_of::<ChimpOutput>();
         let size_of_out = size_of::<u32>();
 
+        //Count the metadata size
+        let mut metadata_size_in_bytes = 0;
         let chimp_input_length = chimp_input.len() - padding;
         let input_length = chimp_input_length;
         info!("The length of the input vec: {}", input_length);
@@ -111,7 +115,8 @@ impl Finalize for Finalizer {
                 &useful_byte_count_storage,
                 &useful_byte_count_staging,
             ],
-            workgroup_count
+            workgroup_count,
+            Some("trim pass")
         );
 
         let output = wgpu_utils::get_s_output::<u32>(
@@ -145,6 +150,7 @@ impl Finalize for Finalizer {
             } else {
                 (ChimpBufferInfo::get().buffer_size() - 1) as u32
             };
+            metadata_size_in_bytes += 8; // 2 32bit
             final_vec.extend(batch_size.to_le_bytes());
             final_vec.extend((temp_vec.len() as u32).to_le_bytes().iter());
             final_vec.extend(temp_vec);
@@ -159,6 +165,6 @@ impl Finalize for Finalizer {
 
             fs::write(&trace_path, trace_output)?;
         }
-        Ok(final_vec)
+        Ok(CompressResult(final_vec, metadata_size_in_bytes))
     }
 }

@@ -4,7 +4,6 @@ use crate::final_compress::{FinalCompress, FinalCompressImpl64};
 use crate::finalize::{Finalize, Finalizer64};
 use anyhow::Result;
 use async_trait::async_trait;
-use bit_vec::BitVec;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{
@@ -282,18 +281,15 @@ mod tests {
     use crate::{decompressor, merger, splitter, ChimpCompressorBatched64};
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
-    use compress_utils::general_utils::DeviceEnum::CPU;
     use env::set_var;
-    use indicatif::ProgressIterator;
     use itertools::Itertools;
     use pollster::FutureExt;
     use std::cmp::min;
-    use std::fs::{File, OpenOptions};
-    use std::io::{BufReader, Write};
+    use std::fs::OpenOptions;
+    use std::io::Write;
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
-    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn splitter_merger() {
@@ -320,19 +316,19 @@ mod tests {
     }
     #[test]
     fn test_decompress_able_buffer() {
-        let subscriber = tracing_subscriber::fmt()
-            .compact()
-            .with_env_filter("wgpu_compress_64_batched=info")
-            // .with_writer(
-            //     OpenOptions::new()
-            //         .create(true)
-            //         .truncate(true)
-            //         .write(true)
-            //         .open("run.log")
-            //         .unwrap(),
-            // )
-            .finish();
-        subscriber.init();
+        // let subscriber = tracing_subscriber::fmt()
+        //     .compact()
+        //     .with_env_filter("wgpu_compress_64_batched=info")
+        //     // .with_writer(
+        //     //     OpenOptions::new()
+        //     //         .create(true)
+        //     //         .truncate(true)
+        //     //         .write(true)
+        //     //         .open("run.log")
+        //     //         .unwrap(),
+        //     // )
+        //     .finish();
+        // subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
@@ -348,12 +344,19 @@ mod tests {
             }
             println!("Buffer size: {}", env::var("CHIMP_BUFFER_SIZE").unwrap());
             let mut messages = Vec::<String>::with_capacity(30);
-            let values = get_values("city_temperature.csv")
+            let mut values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
-            for size_checkpoint in (1..11).progress() {
-                let mut value_new = values[0..(values.len() * size_checkpoint) / 10].to_vec();
-                log::info!("Starting compression of {} values", values.len());
+            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            for size_checkpoint in 1..11 {
+                while let Some(block) = reader.next() {
+                    values.extend(block);
+                    if values.len() >= (size_checkpoint * reader.max_size()) / 100 {
+                        break;
+                    }
+                }
+                let mut value_new = values.clone();
+                println!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
                 let compressor = ChimpCompressorBatched64::new(context.clone());
                 let mut compressed_values2 =
@@ -385,8 +388,6 @@ mod tests {
                             "Decoding time {} values: {decompression_time}\n",
                             value_new.len()
                         ));
-                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
@@ -443,7 +444,6 @@ mod tests {
                 .expect("Could not read test values")
                 .to_vec();
             let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
-            println!("{}", reader.max_size());
             for size_checkpoint in 1..11 {
                 while let Some(block) = reader.next() {
                     values.extend(block);

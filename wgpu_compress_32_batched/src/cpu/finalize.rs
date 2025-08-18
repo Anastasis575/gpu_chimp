@@ -1,7 +1,7 @@
 use crate::finalize::Finalize;
 use async_trait::async_trait;
 use bytemuck::Contiguous;
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult, Step};
 use compress_utils::types::ChimpOutput;
 use itertools::Itertools;
 use std::cmp::{max, min};
@@ -159,11 +159,13 @@ impl Finalize for CPUImpl {
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
         padding: usize,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<CompressResult> {
         //The number of iterations
         let workgroup_count = chimp_output.len() / ChimpBufferInfo::get().buffer_size();
 
         let actual_output = chimp_output[0..chimp_output.len() - padding].to_vec();
+
+        let mut metadata_size_in_bytes = 0;
 
         // The output needs at worst  twice the number of 32-bit numbers to be coded along with one
         // space for the size of the workgroup in bytes
@@ -213,6 +215,7 @@ impl Finalize for CPUImpl {
                 (ChimpBufferInfo::get().buffer_size() - 1) as u32
             };
 
+            metadata_size_in_bytes += 2 * size_of::<u32>();
             final_output.extend(batch_size.to_be_bytes());
             final_output.extend((final_byte_vec.len() as u32).to_be_bytes());
             final_output.extend(&final_byte_vec);
@@ -229,7 +232,7 @@ impl Finalize for CPUImpl {
 
             fs::write(&trace_path, trace_output)?;
         }
-        Ok(final_output)
+        Ok(CompressResult(final_output, metadata_size_in_bytes))
     }
 }
 

@@ -16,7 +16,6 @@ use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
-use wgpu::naga::Statement::Break;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
