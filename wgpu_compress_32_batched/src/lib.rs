@@ -1,9 +1,11 @@
+mod calculate_indexes;
 mod compute_s_shader;
 pub mod cpu;
 pub mod decompressor;
 mod final_compress;
 mod finalize;
 
+use crate::calculate_indexes::{CalculateIndexes, GPUCalculateIndexes};
 use crate::compute_s_shader::{ComputeS, ComputeSImpl};
 use crate::cpu::finalize::CPUImpl;
 use crate::final_compress::{FinalCompress, FinalCompressImpl};
@@ -18,6 +20,7 @@ pub use compress_utils::general_utils::{
 };
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
+use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
 use std::sync::Arc;
@@ -34,10 +37,11 @@ impl Finalize for FinalizerImpl {
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
         padding: usize,
+        indexes: Vec<u32>,
     ) -> Result<CompressResult> {
         match self {
-            FinalizerImpl::GPU(impll) => impll.finalize(chimp_output, padding).await,
-            FinalizerImpl::CPU(impll) => impll.finalize(chimp_output, padding).await,
+            FinalizerImpl::GPU(impll) => impll.finalize(chimp_output, padding, indexes).await,
+            FinalizerImpl::CPU(impll) => impll.finalize(chimp_output, padding, indexes).await,
         }
     }
 }
@@ -62,12 +66,14 @@ impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         let compute_s_impl = self.compute_s_factory();
         let final_compress_impl = self.compute_final_compress_factory();
+        let calculate_indexes_impl = self.calculate_indexes_factory();
         let finalize_impl = self.compute_finalize_factory();
 
         let iterations = self.split_by_max_gpu_buffer_size(vec);
         let mut byte_stream = Vec::new();
         let mut metadata = 0usize;
         for iteration_values in iterations {
+            println!("{}", iteration_values.len());
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
             let mut values = iteration_values;
@@ -75,6 +81,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
             let mut total_millis = 0;
             let mut s_values: Vec<S>;
             let mut chimp_vec: Vec<ChimpOutput>;
+            let mut indexes;
             let output_vec;
             time_it!(
                 {
@@ -94,7 +101,18 @@ impl Compressor<f32> for ChimpCompressorBatched {
             );
             time_it!(
                 {
-                    output_vec = finalize_impl.finalize(&mut chimp_vec, padding.0).await?;
+                    indexes = calculate_indexes_impl
+                        .calculate_indexes(&chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
+                        .await?;
+                },
+                total_millis,
+                "final output stage"
+            );
+            time_it!(
+                {
+                    output_vec = finalize_impl
+                        .finalize(&mut chimp_vec, padding.0, indexes)
+                        .await?;
                 },
                 total_millis,
                 "final Result collection"
@@ -118,12 +136,10 @@ impl ChimpCompressorBatched {
         }
     }
 
-    fn split_by_max_gpu_buffer_size<'a>(
-        &self,
-        vec: &'a mut Vec<f32>,
-    ) -> impl Iterator<Item = Vec<f32>> + use<'a> {
-        let split_by = Self::MAX_BUFFER_SIZE_BYTES / size_of::<ChimpOutput>(); //The most costly buffer
-        vec.chunks(split_by - 1).map(|it| it.to_vec())
+    fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f32>) -> Vec<Vec<f32>> {
+        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (2 * size_of::<S>()); //The most costly buffer
+        let x = vec.chunks(split_by).map(|it| it.to_vec()).collect_vec();
+        x
     }
     pub fn context(&self) -> &Arc<Context> {
         &self.context
@@ -141,6 +157,9 @@ impl ChimpCompressorBatched {
     }
     fn compute_final_compress_factory(&self) -> impl FinalCompress + use<'_> {
         FinalCompressImpl::new(self.context().clone(), self.debug())
+    }
+    fn calculate_indexes_factory(&self) -> impl CalculateIndexes {
+        GPUCalculateIndexes::new(self.context().clone())
     }
     fn compute_finalize_factory(&self) -> impl Finalize + use<'_> {
         match self.finalizer {
@@ -165,7 +184,7 @@ mod tests {
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::sync::Arc;
-    use std::{env, fs, os};
+    use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
     use tracing_subscriber::util::SubscriberInitExt;
 
@@ -265,7 +284,7 @@ mod tests {
         .into_iter()
         {
             println!("{file_name}");
-            let filename = format!("{}_chimp64_output.txt", &file_name);
+            let filename = format!("{}_chimp32_output.txt", &file_name);
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
@@ -273,7 +292,7 @@ mod tests {
             let mut values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
-            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            let mut reader = TimeSeriesReader::new(500_000, values.clone(), 500_000_000);
             for size_checkpoint in 1..11 {
                 while let Some(block) = reader.next() {
                     values.extend(block);
@@ -314,6 +333,8 @@ mod tests {
                             "Decoding time {} values: {decompression_time}\n",
                             value_new.len()
                         ));
+                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
@@ -355,7 +376,7 @@ mod tests {
                 .unwrap(),
         );
         for buffer_size in vec![256, 512, 1024, 2048].into_iter() {
-            let filename = format!("{}_chimp64_output.txt", buffer_size);
+            let filename = format!("{}_chimp32_output.txt", buffer_size);
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
@@ -365,6 +386,7 @@ mod tests {
             let mut values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
+
             let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
 
             for size_checkpoint in (1..11).progress() {

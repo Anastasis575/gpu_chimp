@@ -443,7 +443,7 @@ mod tests {
             let mut values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
-            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 500_000_000);
             for size_checkpoint in 1..11 {
                 while let Some(block) = reader.next() {
                     values.extend(block);
@@ -548,7 +548,7 @@ mod tests {
 
         fn next(&mut self) -> Option<Self::Item> {
             let mut block = Vec::<f64>::with_capacity(self.block_size);
-            if self.current_index < self.minimum_block_size {
+            if self.current_index <= self.minimum_block_size {
                 if self.block_size + self.current_index > self.source_value.len() {
                     let remaining = self.block_size + self.current_index - self.source_value.len();
                     block.extend(&self.source_value[self.current_index..]);

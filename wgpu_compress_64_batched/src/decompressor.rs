@@ -112,13 +112,6 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                 while current_index < compressed_bytes_vec.len() {
                     while current_index < compressed_bytes_vec.len() {
                         let old_index = current_index;
-                        let buffer_value_count = u32::from_le_bytes(
-                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                                .try_into()
-                                .unwrap(),
-                        ) as usize
-                            + 1;
-                        current_index += size_of::<u32>();
                         let size_in_bytes = u32::from_le_bytes(
                             compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
                                 .try_into()
@@ -130,6 +123,13 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                             current_index = old_index;
                             break;
                         }
+                        current_index += size_of::<u32>();
+                        let buffer_value_count = u32::from_le_bytes(
+                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
+                                .try_into()
+                                .unwrap(),
+                        ) as usize
+                            + 1;
                         current_index += size_of::<u32>();
 
                         let byte_window_vec = compressed_bytes_vec
@@ -171,6 +171,12 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
             total_millis,
             "decompression"
         );
+        step!(Step::Decompress, {
+            uncompressed_values
+                .iter()
+                .map(|it: &f64| it.to_string())
+                .into_iter()
+        });
         Ok(uncompressed_values)
     }
 }
@@ -309,9 +315,6 @@ impl GPUDecompressorBatched64 {
             result.extend(output);
         }
         info!("Output result size: {}", result.len());
-        step!(Step::Decompress, {
-            result.iter().map(|it| it.to_string()).into_iter()
-        });
         Ok(result)
     }
 

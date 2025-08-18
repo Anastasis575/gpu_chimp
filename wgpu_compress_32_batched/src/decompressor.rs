@@ -3,7 +3,9 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
-use compress_utils::{execute_compute_shader, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{
+    execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
+};
 use log::info;
 use pollster::FutureExt;
 use std::cmp::max;
@@ -78,7 +80,13 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             ChimpBufferInfo::get().buffer_size(),
                         )
                         .await?;
-
+                    vec_window.clear();
+                    step!(Step::Decompress, {
+                        block_values[0..total_uncompressed_values]
+                            .iter()
+                            .map(|it| format!("{it}\n"))
+                            .into_iter()
+                    });
                     uncompressed_values.extend(block_values[0..total_uncompressed_values].iter());
                 }
             },
@@ -219,17 +227,6 @@ impl BatchedGPUDecompressor {
             result.extend(output);
         }
         info!("Output result size: {}", result.len());
-        if trace_steps().contains(&Step::Decompress) {
-            let trace_path = Step::Decompress.get_trace_file();
-            let mut trace_output = String::new();
-
-            result
-                .iter()
-                .for_each(|it| trace_output.push_str(it.to_string().as_str()));
-
-            fs::write(&trace_path, trace_output)
-                .map_err(|it| DecompressionError::FromBaseAnyhowError(anyhow::anyhow!(it)))?;
-        }
         Ok(result)
     }
 

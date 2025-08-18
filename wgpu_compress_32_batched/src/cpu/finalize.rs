@@ -159,6 +159,7 @@ impl Finalize for CPUImpl {
         &self,
         chimp_output: &mut Vec<ChimpOutput>,
         padding: usize,
+        _indexes: Vec<u32>,
     ) -> anyhow::Result<CompressResult> {
         //The number of iterations
         let workgroup_count = chimp_output.len() / ChimpBufferInfo::get().buffer_size();

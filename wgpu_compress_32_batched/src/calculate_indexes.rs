@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::trace_steps;
 use compress_utils::general_utils::Step;
-use compress_utils::types::ChimpOutput64;
+use compress_utils::types::ChimpOutput;
 use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use std::cmp::max;
 use std::fs;
@@ -12,15 +12,15 @@ use std::sync::Arc;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-pub trait CalculateIndexes64 {
-    async fn calculate_indexes(&self, input: &[ChimpOutput64], size: u32) -> Result<Vec<u32>>;
+pub trait CalculateIndexes {
+    async fn calculate_indexes(&self, input: &[ChimpOutput], size: u32) -> Result<Vec<u32>>;
 }
 
-pub struct GPUCalculateIndexes64 {
+pub struct GPUCalculateIndexes {
     context: Arc<Context>,
 }
 
-impl GPUCalculateIndexes64 {
+impl GPUCalculateIndexes {
     pub fn new(context: Arc<Context>) -> Self {
         Self { context }
     }
@@ -31,12 +31,9 @@ impl GPUCalculateIndexes64 {
 }
 
 #[async_trait]
-impl CalculateIndexes64 for GPUCalculateIndexes64 {
-    async fn calculate_indexes(&self, input: &[ChimpOutput64], size: u32) -> Result<Vec<u32>> {
-        let util_64 = include_str!("shaders/64_utils.wgsl");
-        let temp = include_str!("shaders/calculate_final_sizes.wgsl")
-            .replace("//#include(64_utils)", util_64)
-            .to_string();
+impl CalculateIndexes for GPUCalculateIndexes {
+    async fn calculate_indexes(&self, input: &[ChimpOutput], size: u32) -> Result<Vec<u32>> {
+        let temp = include_str!("shaders/calculate_final_sizes.wgsl").to_string();
         let workgroup_count = input.len().div(size as usize);
         let output_buffer_size = workgroup_count * size_of::<u32>();
         let out_stage_buffer = BufferWrapper::stage_with_size(
@@ -119,7 +116,7 @@ impl CalculateIndexes64 for GPUCalculateIndexes64 {
             "#,
             vec![&out_stage_buffer, &out_storage_buffer, &size_uniform],
             1,
-            Some("Add max")
+            Some("add sizes pass")
         );
         let mut output = wgpu_utils::get_s_output::<u32>(
             self.context(),
