@@ -7,7 +7,6 @@ use compress_utils::general_utils::trace_steps;
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{step, time_it};
 use itertools::Itertools;
-use log::info;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
@@ -111,7 +110,7 @@ impl CPUDecompressorBatched64 {
 
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::<f64>::new();
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         for iteration in 0..iterator_count {
             //split all the buffers to the chunks each iteration will use
@@ -131,26 +130,26 @@ impl CPUDecompressorBatched64 {
                     .to_vec()
             };
 
-            info!(
-                "The size in bytes of the compressed input vec: {}",
-                iteration_compressed_values.len() * size_of::<u8>()
-            );
+            //info!(
+            // "The size in bytes of the compressed input vec: {}",
+            // iteration_compressed_values.len() * size_of::<u8>()
+            // );
 
             let out_buffer_size = (iteration_input_indexes.len() - 1)
                 * ChimpBufferInfo::get().buffer_size()
                 * size_of::<f64>();
-            info!(
-                "The uncompressed output values buffer size in bytes: {}",
-                out_buffer_size
-            );
+            //info!(
+            // "The uncompressed output values buffer size in bytes: {}",
+            // out_buffer_size
+            // );
             let out_vec = vec![
                 f64::default();
                 (iteration_input_indexes.len() - 1)
                     * ChimpBufferInfo::get().buffer_size()
             ];
 
-            info!("Total output values: {}", buffer_value_count);
-            info!("Total input values: {}", buffer_value_count);
+            //info!("Total output values: {}", buffer_value_count);
+            //info!("Total input values: {}", buffer_value_count);
 
             let in_size = iteration_compressed_values.len();
             let iteration_workgroup_count = iteration_input_indexes.len() - 1;
@@ -169,7 +168,7 @@ impl CPUDecompressorBatched64 {
             }
             result.extend(writer.out_vec);
         }
-        info!("Output result size: {}", result.len());
+        //info!("Output result size: {}", result.len());
         step!(Step::Decompress, {
             result.iter().map(|it| it.to_string()).into_iter()
         });

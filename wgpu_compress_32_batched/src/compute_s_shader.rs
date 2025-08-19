@@ -4,7 +4,6 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::S;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
-use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -67,14 +66,14 @@ impl ComputeS for ComputeSImpl {
 
         //Calculating buffer sizes and workgroup counts
         let workgroup_count = self.get_max_number_of_groups(values.len());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let size_of_s = size_of::<S>();
         let bytes = values.len() + 1;
-        info!("The size of the input values vec: {}", bytes);
+        //info!("The size of the input values vec: {}", bytes);
 
         let s_buffer_size = (size_of_s * bytes) as BufferAddress;
-        info!("The S buffer size in bytes: {}", s_buffer_size);
+        //info!("The S buffer size in bytes: {}", s_buffer_size);
 
         let mut padded_values = Vec::from(values);
         padded_values.push(0f32);
@@ -118,7 +117,7 @@ impl ComputeS for ComputeSImpl {
             s_staging_buffer.buffer(),
         )
         .await?;
-        info!("Output result size: {}", output.len());
+        //info!("Output result size: {}", output.len());
         if trace_steps().contains(&Step::ComputeS) {
             let trace_path = Step::ComputeS.get_trace_file();
             let mut trace_output = String::new();

@@ -10,7 +10,8 @@ pub struct CPUCompressor {
 }
 #[derive(Error, Debug)]
 pub enum CPUCompressError {
-    #[error("Wrong format on decompression input at bit {index} in byte {byte_index}",byte_index=(.index)/8)]
+    #[error("Wrong format on decompression input at bit {index} in byte {byte_index}",byte_index=(.index)/8
+    )]
     WrongFormat { index: usize },
 }
 
@@ -99,9 +100,9 @@ impl Decompressor<f32> for CPUCompressor {
         let mut input_index: usize;
         let first_num_u32: u32 = input_vector.reinterpret_u32(0, 32);
         let first_num = f32::from_bits(first_num_u32);
-        if self.debug {
-            log::info!("0:{}", first_num);
-        }
+        // if self.debug {
+        //     log:: //info!("0:{}", first_num);
+        // }
 
         let mut output = vec![first_num];
 
@@ -141,9 +142,9 @@ impl Decompressor<f32> for CPUCompressor {
                     break;
                 } else {
                     let value_f32 = f32::from_bits(value);
-                    if self.debug {
-                        log::info!("{}:{}", output.len(), value_f32);
-                    }
+                    // if self.debug {
+                    //     log:: //info!("{}:{}", output.len(), value_f32);
+                    // }
                     output.push(value_f32);
                 }
             } else if input_vector[input_index + 1] {
@@ -172,17 +173,17 @@ impl Decompressor<f32> for CPUCompressor {
                     break;
                 } else {
                     let value_f32 = f32::from_bits(value);
-                    if self.debug {
-                        log::info!("{}:{}", output.len(), value_f32);
-                    }
+                    // if self.debug {
+                    //     log:: //info!("{}:{}", output.len(), value_f32);
+                    // }
                     output.push(value_f32);
                 }
             } else {
                 let value_f32 = f32::from_bits(last_num);
                 last_lead = 32;
-                if self.debug {
-                    log::info!("{}:{}", output.len(), value_f32);
-                }
+                // if self.debug {
+                //     log:: //info!("{}:{}", output.len(), value_f32);
+                // }
                 output.push(value_f32);
                 input_index += 2;
             }
@@ -215,15 +216,15 @@ where
     async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
-        log::info!("Started cpu decompression stage");
-        log::info!("============================");
+        // log:: //info!("Started cpu decompression stage");
+        // log:: //info!("============================");
         let output = self.decompressor.decompress(vec).await?;
-        log::info!("============================");
-        log::info!("Finished cpu decompresssion stage");
-        total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
+        // log:: //info!("============================");
+        // log:: //info!("Finished cpu decompresssion stage");
+        // total_millis += times.elapsed().as_millis();
+        // log:: //info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        // log:: //info!("Total time elapsed: {}ms", total_millis);
+        // log:: //info!("============================");
         Ok(output)
     }
 }
@@ -247,15 +248,15 @@ where
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
-        log::info!("Started cpu compression stage");
-        log::info!("============================");
+        // log:: //info!("Started cpu compression stage");
+        // log:: //info!("============================");
         let output = self.compressor.compress(vec).await?;
-        log::info!("============================");
-        log::info!("Finished cpu compresion stage");
+        // log:: //info!("============================");
+        // log:: //info!("Finished cpu compresion stage");
         total_millis += times.elapsed().as_millis();
-        log::info!("Stage execution time: {}ms", times.elapsed().as_millis());
-        log::info!("Total time elapsed: {}ms", total_millis);
-        log::info!("============================");
+        // log:: //info!("Stage execution time: {}ms", times.elapsed().as_millis());
+        // log:: //info!("Total time elapsed: {}ms", total_millis);
+        // log:: //info!("============================");
         Ok(output)
     }
 }

@@ -3,7 +3,6 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
-use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -56,16 +55,16 @@ impl FinalCompress for FinalCompressImpl {
         let size_of_s = size_of::<S>();
         let size_of_output = size_of::<ChimpOutput>();
         let input_length = input.len();
-        info!("The length of the input vec: {}", input_length);
+        //info!("The length of the input vec: {}", input_length);
 
         let s_buffer_size = (size_of_s * s_values.len()) as BufferAddress;
-        info!("The S buffer size in bytes: {}", &s_buffer_size);
+        //info!("The S buffer size in bytes: {}", &s_buffer_size);
 
         let output_buffer_size = (size_of_output * s_values.len()) as BufferAddress;
-        info!("The Output buffer size in bytes: {}", &output_buffer_size);
+        //info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
         let workgroup_count = self.get_max_number_of_groups(input.len());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
         let output_staging_buffer = BufferWrapper::stage_with_size(
             self.context().device(),
             output_buffer_size,

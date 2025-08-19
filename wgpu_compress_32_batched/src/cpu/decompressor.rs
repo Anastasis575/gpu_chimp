@@ -255,7 +255,7 @@ impl DebugBatchDecompressorCpu {
 
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::new();
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         for iteration in 0..iterator_count {
             //split all the buffers to the chunks each iteration will use
@@ -288,8 +288,8 @@ impl DebugBatchDecompressorCpu {
                 out_buffer_size
             );
 
-            info!("Total output values: {}", buffer_value_count);
-            info!("Total input values: {}", buffer_value_count);
+            //info!("Total output values: {}", buffer_value_count);
+            //info!("Total input values: {}", buffer_value_count);
 
             let workgroups = iteration_input_indexes.len() - 1;
 
@@ -307,7 +307,7 @@ impl DebugBatchDecompressorCpu {
             }
             result.extend(writer.output());
         }
-        info!("Output result size: {}", result.len());
+        //info!("Output result size: {}", result.len());
         if trace_steps().contains(&Step::Decompress) {
             let trace_path = Step::Decompress.get_trace_file();
             let mut trace_output = String::new();

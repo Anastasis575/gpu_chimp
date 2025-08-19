@@ -11,7 +11,7 @@ use compress_utils::general_utils::{
 };
 use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput64, S};
-use log::info;
+use itertools::Itertools;
 use pollster::FutureExt;
 use std::ops::Div;
 use std::sync::Arc;
@@ -213,9 +213,11 @@ impl ChimpCompressorBatched64 {
             }
         }
     }
-    fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f64>) -> impl Iterator<Item = Vec<f64>> {
-        let split_by = Self::MAX_BUFFER_SIZE_BYTES / size_of::<ChimpOutput64>(); //The most costly buffer
-        vec.chunks(split_by - 1).map(|it| it.to_vec())
+    fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f64>) -> Vec<Vec<f64>> {
+        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (2 * size_of::<ChimpOutput64>()); //The most costly buffer
+        let closest = split_by - split_by % ChimpBufferInfo::get().buffer_size();
+        let x = vec.chunks(closest).map(|it| it.to_vec()).collect_vec();
+        x
     }
     fn compute_final_compress_factory(&self) -> Compress64Impls {
         match self.device_type() {
@@ -485,8 +487,8 @@ mod tests {
                             "Decoding time {} values:  {decompression_time}\n",
                             value_new.len()
                         ));
-                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {

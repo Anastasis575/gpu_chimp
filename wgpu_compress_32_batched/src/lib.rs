@@ -73,12 +73,11 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let mut byte_stream = Vec::new();
         let mut metadata = 0usize;
         for iteration_values in iterations {
-            println!("{}", iteration_values.len());
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
             let mut values = iteration_values;
             values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
-            let mut total_millis = 0;
+            let mut total_millis: u128 = 0;
             let mut s_values: Vec<S>;
             let mut chimp_vec: Vec<ChimpOutput>;
             let mut indexes;
@@ -137,8 +136,10 @@ impl ChimpCompressorBatched {
     }
 
     fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f32>) -> Vec<Vec<f32>> {
-        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (2 * size_of::<S>()); //The most costly buffer
-        let x = vec.chunks(split_by).map(|it| it.to_vec()).collect_vec();
+        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (10 * size_of::<S>()); //The most costly buffer
+        let closest = split_by - split_by % ChimpBufferInfo::get().buffer_size();
+
+        let x = vec.chunks(closest).map(|it| it.to_vec()).collect_vec();
         x
     }
     pub fn context(&self) -> &Arc<Context> {
@@ -171,12 +172,11 @@ impl ChimpCompressorBatched {
 #[cfg(test)]
 mod tests {
     use crate::decompressor::BatchedGPUDecompressor;
-    use crate::DeviceEnum::{CPU, GPU};
-    use crate::{cpu, ChimpCompressorBatched};
+    use crate::ChimpCompressorBatched;
+    use crate::DeviceEnum::GPU;
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
-    use cpu::decompressor;
     use indicatif::ProgressIterator;
     use itertools::Itertools;
     use pollster::FutureExt;
@@ -229,7 +229,7 @@ mod tests {
         let mut values = get_values("city_temperature.csv")
             .expect("Could not read test values")
             .to_vec();
-        log::info!("Starting compression of {} values", values.len());
+        // log:: //info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched::default();
         if check_for_debug_mode().expect("Could not read file system") {
             compressor.set_debug(true);
@@ -239,7 +239,7 @@ mod tests {
         let mut values = get_values("city_temperature.csv")
             .expect("Could not read test values")
             .to_vec();
-        log::info!("Starting compression of {} values", values.len());
+        // log:: //info!("Starting compression of {} values", values.len());
         let mut compressor = ChimpCompressorBatched {
             finalizer: GPU,
             ..ChimpCompressorBatched::default()
@@ -333,8 +333,8 @@ mod tests {
                             "Decoding time {} values: {decompression_time}\n",
                             value_new.len()
                         ));
-                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {
@@ -475,7 +475,7 @@ mod tests {
                 .expect("Could not read test values")
                 .to_vec(),
         );
-        log::info!("Starting compression of {} values", values.len());
+        // log:: //info!("Starting compression of {} values", values.len());
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()

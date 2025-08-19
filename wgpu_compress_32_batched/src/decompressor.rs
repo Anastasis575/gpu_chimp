@@ -6,7 +6,6 @@ use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnosti
 use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
-use log::info;
 use pollster::FutureExt;
 use std::cmp::max;
 use std::fs;
@@ -51,6 +50,14 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             current_index = old_index;
                             break;
                         }
+
+                        if (input_indexes.len() + 1) * ChimpBufferInfo::get().buffer_size() * 4
+                            >= ChimpCompressorBatched::MAX_BUFFER_SIZE_BYTES
+                        {
+                            current_index = old_index;
+                            break;
+                        }
+
                         let byte_window_vec = compressed_bytes_vec
                             [current_index..current_index + (size_in_bytes as usize)]
                             .to_vec();
@@ -60,6 +67,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             0,
                             "Total bytes need to be in batches of 4"
                         );
+
                         while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(4) {
                             byte_window = rest;
                             //parse u32 from groups of 4 bytes
@@ -68,6 +76,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             vec_window.push(value_u32);
                         }
                         input_indexes.push(vec_window.len() as u32);
+
                         current_index += size_in_bytes as usize;
                         total_uncompressed_values += buffer_value_count
                     }
@@ -81,6 +90,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                         )
                         .await?;
                     vec_window.clear();
+                    input_indexes.clear();
                     step!(Step::Decompress, {
                         block_values[0..total_uncompressed_values]
                             .iter()
@@ -88,6 +98,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             .into_iter()
                     });
                     uncompressed_values.extend(block_values[0..total_uncompressed_values].iter());
+                    total_uncompressed_values = 0;
                 }
             },
             total_millis,
@@ -129,7 +140,7 @@ impl BatchedGPUDecompressor {
 
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::new();
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         for iteration in 0..iterator_count {
             //split all the buffers to the chunks each iteration will use
@@ -149,18 +160,18 @@ impl BatchedGPUDecompressor {
                     .to_vec()
             };
 
-            info!(
-                "The size in bytes of the compressed input vec: {}",
-                iteration_compressed_values.len() * size_of::<u8>()
-            );
+            // info!(
+            //     "The size in bytes of the compressed input vec: {}",
+            //     iteration_compressed_values.len() * size_of::<u8>()
+            // );
 
             let out_buffer_size = (iteration_input_indexes.len() - 1)
                 * ChimpBufferInfo::get().buffer_size()
                 * size_of::<u32>();
-            info!(
-                "The uncompressed output values buffer size in bytes: {}",
-                out_buffer_size
-            );
+            // info!(
+            //     "The uncompressed output values buffer size in bytes: {}",
+            //     out_buffer_size
+            // );
 
             let input_storage_buffer = BufferWrapper::storage_with_content(
                 self.device(),
@@ -186,7 +197,7 @@ impl BatchedGPUDecompressor {
                 WgpuGroupId::new(0, 2),
                 Some("Total input values"),
             );
-            info!("Total output values: {}", buffer_value_count);
+            //info!("Total output values: {}", buffer_value_count);
             let in_size = BufferWrapper::storage_with_content(
                 self.device(),
                 bytemuck::cast_slice(&iteration_input_indexes),
@@ -199,7 +210,7 @@ impl BatchedGPUDecompressor {
                 WgpuGroupId::new(0, 4),
                 Some("Total input buffer length"),
             );
-            info!("Total input values: {}", buffer_value_count);
+            //info!("Total input values: {}", buffer_value_count);
 
             execute_compute_shader!(
                 self.context(),
@@ -226,7 +237,7 @@ impl BatchedGPUDecompressor {
             .await?;
             result.extend(output);
         }
-        info!("Output result size: {}", result.len());
+        //info!("Output result size: {}", result.len());
         Ok(result)
     }
 

@@ -4,7 +4,6 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::step;
 use compress_utils::types::S;
-use log::info;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -36,14 +35,14 @@ impl ComputeS for CpuComputeSImpl {
 
         //Calculating buffer sizes and workgroup counts
         let workgroup_count = self.get_max_number_of_groups(values.len());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let size_of_s = size_of::<S>();
         let bytes = values.len() + 1;
-        info!("The size of the input values vec: {}", bytes);
+        //info!("The size of the input values vec: {}", bytes);
 
         let s_buffer_size = (size_of_s * bytes) as BufferAddress;
-        info!("The S buffer size in bytes: {}", s_buffer_size);
+        //info!("The S buffer size in bytes: {}", s_buffer_size);
 
         let mut padded_values = Vec::from(values);
         padded_values.push(0f64);
@@ -63,7 +62,7 @@ impl ComputeS for CpuComputeSImpl {
                 }
             }
         }
-        info!("Output result size: {}", Ss_vec.len());
+        //info!("Output result size: {}", Ss_vec.len());
         step!(Step::ComputeS, {
             Ss_vec
                 .iter()

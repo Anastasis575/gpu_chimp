@@ -5,8 +5,7 @@ use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult
 use compress_utils::types::ChimpOutput64;
 use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
-use log::info;
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::ops::Div;
 use std::sync::Arc;
 use std::{fs, vec};
@@ -61,14 +60,14 @@ impl Finalize for Finalizer64 {
         } as u32;
 
         let input_length = chimp_input_length;
-        info!("The length of the input vec: {}", input_length);
+        //info!("The length of the input vec: {}", input_length);
 
         let output_buffer_size =
             ((*indexes.last().unwrap() + 1) as usize * size_of::<u64>()) as BufferAddress;
-        info!("The Output buffer size in bytes: {}", &output_buffer_size);
+        //info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
         let workgroup_count = chimp_input.len().div(ChimpBufferInfo::get().buffer_size());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let out_stage_buffer = BufferWrapper::stage_with_size(
             self.context().device(),

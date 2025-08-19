@@ -488,20 +488,20 @@ pub mod general_utils {
     #[macro_export]
     macro_rules! time_it_compound {
         ($var:block,$total_millis:expr,$stage_name:expr,$stage_count:expr,$timeStruct:expr) => {
-            info!("Starting {} #{}",$stage_name,$stage_count);
-            info!("============================");
+            //info!("Starting {} #{}",$stage_name,$stage_count);
+            //info!("============================");
 
             let times = std::time::Instant::now();
 
             $var
 
-            info!("============================");
-            info!("Finished {} #{}",$stage_name,$stage_count);
+            //info!("============================");
+            //info!("Finished {} #{}",$stage_name,$stage_count);
 
             $total_millis += times.elapsed().as_millis();
 
-            info!("Stage execution time: {}ms", times.elapsed().as_millis());
-            info!("============================");
+            //info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            //info!("============================");
 
             *$timeStruct.times.entry($stage_name.to_string()).or_insert(0)+=times.elapsed().as_millis();
             $timeStruct.total_time +=times.elapsed().as_millis();
@@ -510,44 +510,44 @@ pub mod general_utils {
     #[macro_export]
     macro_rules! time_it {
         ($var:block,$total_millis:expr,$stage_name:expr,$logger:expr) => {
-            info!("Starting {}",$stage_name);
-            info!("============================");
+            //info!("Starting {}",$stage_name);
+            //info!("============================");
 
             let times = std::time::Instant::now();
 
             $var
 
-            info!("============================");
-            info!("Finished {}",$stage_name );
+            //info!("============================");
+            //info!("Finished {}",$stage_name );
 
             $total_millis += times.elapsed().as_millis();
 
-            info!("Stage execution time: {}ms", times.elapsed().as_millis());
-            info!("Total time elapsed: {}ms", $total_millis);
+            //info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            //info!("Total time elapsed: {}ms", $total_millis);
 
-            info!("============================");
-            info!("============================");
+            //info!("============================");
+            //info!("============================");
 
             $logger($total_millis)
         };
         ($var:block,$total_millis:expr,$stage_name:expr) => {
-            info!("Starting {}",$stage_name);
-            info!("============================");
+            //info!("Starting {}",$stage_name);
+            //info!("============================");
 
             let times = std::time::Instant::now();
 
             $var
 
-            info!("============================");
-            info!("Finished {}",$stage_name );
+            //info!("============================");
+            //info!("Finished {}",$stage_name );
 
             $total_millis += times.elapsed().as_millis();
 
-            info!("Stage execution time: {}ms", times.elapsed().as_millis());
-            info!("Total time elapsed: {}ms", $total_millis);
+            //info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            //info!("Total time elapsed: {}ms", $total_millis);
 
-            info!("============================");
-            info!("============================");
+            //info!("============================");
+            //info!("============================");
 
         }
 
@@ -585,7 +585,7 @@ pub mod general_utils {
     ///     let mut buffers = vec![BufferWrapper::uniform_with_content(context.device(),&uniform_bytes,WgpuGroupId::new(0,1),Some("uniform_buffer"))]; // Buffers to be used in the compute shader
     ///     let dispatch_size = 64; // Number of workgroups to dispatch
     ///
-    ///     execute_compute_shader!(&mut context, shader_source, &mut buffers, dispatch_size);
+    ///     // execute_compute_shader!(&mut context, shader_source, &mut buffers, dispatch_size, Some("test"));
     /// }
     /// ```
     #[macro_export]
@@ -790,6 +790,7 @@ pub mod general_utils {
                 "compress" => Ok(Step::Compress),
                 "finalize" => Ok(Step::Finalize),
                 "decompress" => Ok(Step::Decompress),
+                "calculate_indexes" => Ok(Step::CalculateIndexes),
                 _ => Err(anyhow::anyhow!("Unknown step")),
             }
         }

@@ -7,7 +7,6 @@ use compress_utils::{
     execute_compute_shader, general_utils, step, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
 use itertools::Itertools;
-use log::info;
 use std::cmp::max;
 use std::ops::Div;
 use std::sync::Arc;
@@ -71,14 +70,14 @@ impl Finalize for Finalizer {
             size
         } as u32;
 
-        info!("The length of the input vec: {}", chimp_input_length);
+        //info!("The length of the input vec: {}", chimp_input_length);
 
         let output_buffer_size =
             (size_of_out * (*indexes.last().unwrap() as usize)) as BufferAddress;
-        info!("The Output buffer size in bytes: {}", &output_buffer_size);
+        //info!("The Output buffer size in bytes: {}", &output_buffer_size);
 
         let workgroup_count = chimp_input.len().div(ChimpBufferInfo::get().buffer_size());
-        info!("The wgpu workgroup size: {}", &workgroup_count);
+        //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let out_stage_buffer = BufferWrapper::stage_with_size(
             self.device(),
