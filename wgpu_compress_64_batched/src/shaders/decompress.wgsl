@@ -151,5 +151,6 @@ fn reinterpret_num(array_index:u32,index:u32,length:u32)->u64{
 @compute
 @workgroup_size(1)
 fn main(@builtin(workgroup_id) global_id: vec3<u32>) {
-    write(input_index[global_id.x],global_id.x*size);
+    //@in_offset
+    write(input_index[global_id.x+in_offset],(in_offset+global_id.x)*size);
 }

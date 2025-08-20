@@ -1,5 +1,4 @@
 use crate::cpu::decompressor::CPUDecompressorBatched64;
-use crate::ChimpCompressorBatched64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
@@ -96,6 +95,97 @@ impl ChimpDecompressorBatched64 {
 
 #[async_trait]
 impl Decompressor<f64> for GPUDecompressorBatched64 {
+    // async fn decompress(
+    //     &self,
+    //     compressed_bytes_vec: &mut Vec<u8>,
+    // ) -> Result<Vec<f64>, DecompressionError> {
+    //     let mut current_index = 0usize;
+    //     let mut uncompressed_values = Vec::new();
+    //     let mut total_millis = 0;
+    //     time_it!(
+    //         {
+    //             let mut vec_window = Vec::new();
+    //             let mut total_uncompressed_values = 0;
+    //             let mut input_indexes = Vec::new();
+    //             while current_index < compressed_bytes_vec.len() {
+    //                 while current_index < compressed_bytes_vec.len() {
+    //                     let old_index = current_index;
+    //                     let size_in_bytes = u32::from_le_bytes(
+    //                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
+    //                             .try_into()
+    //                             .unwrap(),
+    //                     );
+    //                     if vec_window.len() + size_in_bytes as usize
+    //                         >= self.context.get_max_storage_buffer_size() / size_of::<u64>()
+    //                     {
+    //                         current_index = old_index;
+    //                         break;
+    //                     }
+    //                     current_index += size_of::<u32>();
+    //                     let buffer_value_count = u32::from_le_bytes(
+    //                         compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
+    //                             .try_into()
+    //                             .unwrap(),
+    //                     ) as usize
+    //                         + 1;
+    //                     current_index += size_of::<u32>();
+    //                     if (input_indexes.len() + 1) * ChimpBufferInfo::get().buffer_size() * 4
+    //                         >= self.context.get_max_storage_buffer_size()
+    //                     {
+    //                         current_index = old_index;
+    //                         break;
+    //                     }
+    //                     let byte_window_vec = compressed_bytes_vec
+    //                         [current_index..current_index + (size_in_bytes as usize)]
+    //                         .to_vec();
+    //                     let mut byte_window = byte_window_vec.as_slice();
+    //                     assert_eq!(
+    //                         byte_window.len() % 8,
+    //                         0,
+    //                         "Total bytes need to be in batches of 8"
+    //                     );
+    //                     while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
+    //                         byte_window = rest;
+    //                         //parse u32 from groups of 8 bytes
+    //                         let value_u64 =
+    //                             u64::from_le_bytes(first_four_bytes.try_into().unwrap());
+    //                         vec_window.push(value_u64);
+    //                     }
+    //                     input_indexes.push(vec_window.len() as u32);
+    //                     current_index += size_in_bytes as usize;
+    //                     total_uncompressed_values += buffer_value_count
+    //                 }
+    //                 input_indexes.insert(0, 0);
+    //                 //Block is as many buffers fit into the gpu the distinction is made for compatibility reasons
+    //                 let block_values = self
+    //                     .decompress_block(
+    //                         vec_window.as_slice(),
+    //                         input_indexes.as_slice(),
+    //                         min(
+    //                             total_uncompressed_values,
+    //                             ChimpBufferInfo::get().buffer_size(),
+    //                         ),
+    //                     )
+    //                     .await?;
+    //
+    //                 uncompressed_values.extend(block_values[0..total_uncompressed_values].iter());
+    //                 vec_window.clear();
+    //                 total_uncompressed_values = 0;
+    //                 input_indexes.clear();
+    //             }
+    //         },
+    //         total_millis,
+    //         "decompression"
+    //     );
+    //     step!(Step::Decompress, {
+    //         uncompressed_values
+    //             .iter()
+    //             .map(|it: &f64| it.to_string())
+    //             .into_iter()
+    //     });
+    //     Ok(uncompressed_values)
+    // }
+
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
@@ -105,56 +195,55 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
         let mut total_millis = 0;
         time_it!(
             {
+                let mut compressed_bytes_vec: &[u64] = bytemuck::cast_slice(compressed_bytes_vec);
                 let mut vec_window = Vec::new();
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
                     while current_index < compressed_bytes_vec.len() {
                         let old_index = current_index;
-                        let size_in_bytes = u32::from_le_bytes(
-                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                                .try_into()
-                                .unwrap(),
-                        );
-                        if vec_window.len() + size_in_bytes as usize
-                            >= ChimpCompressorBatched64::MAX_BUFFER_SIZE_BYTES / size_of::<u64>()
+                        let size_in_bytes =
+                            (compressed_bytes_vec[current_index] & 0xFFFFFFFF) as usize;
+                        let size = size_in_bytes / size_of::<u64>();
+                        // let size_in_bytes = u32::from_le_bytes(
+                        //     compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
+                        //         .try_into()
+                        //         .unwrap(),
+                        // );
+                        if (vec_window.len() + size_in_bytes as usize)
+                            >= self.context.get_max_storage_buffer_size() / size_of::<u64>()
                         {
                             current_index = old_index;
                             break;
                         }
-                        current_index += size_of::<u32>();
-                        let buffer_value_count = u32::from_le_bytes(
-                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                                .try_into()
-                                .unwrap(),
-                        ) as usize
-                            + 1;
-                        current_index += size_of::<u32>();
+                        // current_index += size_of::<u32>();
+                        let buffer_value_count = (compressed_bytes_vec[current_index] >> 32) + 1;
+                        current_index += 1;
                         if (input_indexes.len() + 1) * ChimpBufferInfo::get().buffer_size() * 4
-                            >= ChimpCompressorBatched64::MAX_BUFFER_SIZE_BYTES
+                            >= self.context.get_max_storage_buffer_size()
                         {
                             current_index = old_index;
                             break;
                         }
-                        let byte_window_vec = compressed_bytes_vec
-                            [current_index..current_index + (size_in_bytes as usize)]
-                            .to_vec();
-                        let mut byte_window = byte_window_vec.as_slice();
-                        assert_eq!(
-                            byte_window.len() % 8,
-                            0,
-                            "Total bytes need to be in batches of 8"
+                        vec_window.extend(
+                            compressed_bytes_vec[current_index..current_index + size].to_vec(),
                         );
-                        while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
-                            byte_window = rest;
-                            //parse u32 from groups of 8 bytes
-                            let value_u64 =
-                                u64::from_le_bytes(first_four_bytes.try_into().unwrap());
-                            vec_window.push(value_u64);
-                        }
+                        // let mut byte_window = byte_window_vec.as_slice();
+                        // assert_eq!(
+                        //     byte_window.len() % 8,
+                        //     0,
+                        //     "Total bytes need to be in batches of 8"
+                        // );
+                        // while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
+                        //     byte_window = rest;
+                        //     //parse u32 from groups of 8 bytes
+                        //     let value_u64 =
+                        //         u64::from_le_bytes(first_four_bytes.try_into().unwrap());
+                        //     vec_window.push(value_u64);
+                        // }
                         input_indexes.push(vec_window.len() as u32);
-                        current_index += size_in_bytes as usize;
-                        total_uncompressed_values += buffer_value_count
+                        current_index += size as usize;
+                        total_uncompressed_values += buffer_value_count as usize
                     }
                     input_indexes.insert(0, 0);
                     //Block is as many buffers fit into the gpu the distinction is made for compatibility reasons
@@ -267,24 +356,6 @@ impl GPUDecompressorBatched64 {
             let next_out = input_indexes[next - 1];
             let iteration_compressed_values_len = next_out - out_offset;
 
-            // let iteration_compressed_values = if is_last_iteration {
-            //     compressed_value_slice[first_index..].to_vec()
-            // } else {
-            //     compressed_value_slice
-            //         [first_index..(iteration_input_indexes.last().unwrap().to_owned() as usize)]
-            //         .to_vec()
-            // };
-
-            //info!(
-            // "The size in bytes of the compressed input vec: {}",
-            // iteration_compressed_values.len() * size_of::<u8>()
-            // );
-
-            //info!(
-            // "The uncompressed output values buffer size in bytes: {}",
-            // out_buffer_size
-            // );
-
             let size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),
                 bytemuck::bytes_of(&buffer_value_count),
@@ -302,7 +373,7 @@ impl GPUDecompressorBatched64 {
             let s_offset = format!("let in_offset={offset}u;");
             let shader_code = include_str!("shaders/decompress.wgsl")
                 .replace("//#include(64_utils)", util_64)
-                .replace("@in_offset", &s_offset)
+                .replace("//@in_offset", &s_offset)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
