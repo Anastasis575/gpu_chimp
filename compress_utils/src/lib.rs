@@ -188,6 +188,84 @@ pub mod wgpu_utils {
     use wgpu_types::PollType::Wait;
     use wgpu_types::{BindingType, BufferAddress, ShaderStages};
 
+    #[derive(Default)]
+    pub struct RunBuffers {
+        input_buffer: BufferWrapper,
+        s_buffer: BufferWrapper,
+        chunks_uniform: BufferWrapper,
+        compressed_buffer: BufferWrapper,
+        index_buffer: BufferWrapper,
+        byte_buffer: BufferWrapper,
+    }
+
+    impl RunBuffers {
+        pub fn set_input_buffer(&mut self, input_buffer: BufferWrapper) {
+            self.input_buffer = input_buffer;
+        }
+
+        pub fn set_s_buffer(&mut self, s_buffer: BufferWrapper) {
+            self.s_buffer = s_buffer;
+        }
+
+        pub fn set_compressed_buffer(&mut self, compressed_buffer: BufferWrapper) {
+            self.compressed_buffer = compressed_buffer;
+        }
+
+        pub fn set_index_buffer(&mut self, index_buffer: BufferWrapper) {
+            self.index_buffer = index_buffer;
+        }
+
+        pub fn set_byte_buffer(&mut self, byte_buffer: BufferWrapper) {
+            self.byte_buffer = byte_buffer;
+        }
+        pub fn set_chunks(&mut self, chunks_buffer: BufferWrapper) {
+            self.chunks_uniform = chunks_buffer;
+        }
+
+        pub fn input_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.input_buffer
+        }
+        pub fn input_buffer(&self) -> &BufferWrapper {
+            &self.input_buffer
+        }
+
+        pub fn s_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.s_buffer
+        }
+        pub fn s_buffer(&self) -> &BufferWrapper {
+            &self.s_buffer
+        }
+
+        pub fn compressed_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.compressed_buffer
+        }
+        pub fn compressed_buffer(&self) -> &BufferWrapper {
+            &self.compressed_buffer
+        }
+
+        pub fn index_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.index_buffer
+        }
+
+        pub fn index_buffer(&self) -> &BufferWrapper {
+            &self.index_buffer
+        }
+
+        pub fn byte_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.byte_buffer
+        }
+        pub fn byte_buffer(&self) -> &BufferWrapper {
+            &self.byte_buffer
+        }
+
+        pub fn chunks_uniform_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.chunks_uniform
+        }
+        pub fn chunks_uniform(&self) -> &BufferWrapper {
+            &self.chunks_uniform
+        }
+    }
+
     /// Utility error description
     #[derive(Error, Debug)]
     pub enum WgpuUtilsError {

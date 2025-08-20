@@ -21,5 +21,5 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>) {
      for (var i=0u;i<size;i++){
         sum += in[workgroup_id.x *size + i].bit_count;
     }
-    last_byte_index[workgroup_id.x]=u32(sum/u64(64u)) +2u;
+    last_byte_index[workgroup_id.x+1u]=u32(sum/u64(64u)) +2u;
 }

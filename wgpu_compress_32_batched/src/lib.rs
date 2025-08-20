@@ -19,7 +19,8 @@ pub use compress_utils::general_utils::{
     add_padding_to_fit_buffer_count, ChimpBufferInfo, DeviceEnum, Padding,
 };
 use compress_utils::types::{ChimpOutput, S};
-use compress_utils::{time_it, BufferWrapper};
+use compress_utils::wgpu_utils::RunBuffers;
+use compress_utils::{time_it, wgpu_utils};
 use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
@@ -60,84 +61,6 @@ impl Default for ChimpCompressorBatched {
     }
 }
 
-#[derive(Default)]
-struct RunBuffers {
-    input_buffer: BufferWrapper,
-    s_buffer: BufferWrapper,
-    chunks_uniform: BufferWrapper,
-    compressed_buffer: BufferWrapper,
-    index_buffer: BufferWrapper,
-    byte_buffer: BufferWrapper,
-}
-
-impl RunBuffers {
-    pub fn set_input_buffer(&mut self, input_buffer: BufferWrapper) {
-        self.input_buffer = input_buffer;
-    }
-
-    pub fn set_s_buffer(&mut self, s_buffer: BufferWrapper) {
-        self.s_buffer = s_buffer;
-    }
-
-    pub fn set_compressed_buffer(&mut self, compressed_buffer: BufferWrapper) {
-        self.compressed_buffer = compressed_buffer;
-    }
-
-    pub fn set_index_buffer(&mut self, index_buffer: BufferWrapper) {
-        self.index_buffer = index_buffer;
-    }
-
-    pub fn set_byte_buffer(&mut self, byte_buffer: BufferWrapper) {
-        self.byte_buffer = byte_buffer;
-    }
-    pub fn set_chunks(&mut self, chunks_buffer: BufferWrapper) {
-        self.chunks_uniform = chunks_buffer;
-    }
-
-    pub fn input_buffer_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.input_buffer
-    }
-    pub fn input_buffer(&self) -> &BufferWrapper {
-        &self.input_buffer
-    }
-
-    pub fn s_buffer_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.s_buffer
-    }
-    pub fn s_buffer(&self) -> &BufferWrapper {
-        &self.s_buffer
-    }
-
-    pub fn compressed_buffer_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.compressed_buffer
-    }
-    pub fn compressed_buffer(&self) -> &BufferWrapper {
-        &self.compressed_buffer
-    }
-
-    pub fn index_buffer_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.index_buffer
-    }
-
-    pub fn index_buffer(&self) -> &BufferWrapper {
-        &self.index_buffer
-    }
-
-    pub fn byte_buffer_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.byte_buffer
-    }
-    pub fn byte_buffer(&self) -> &BufferWrapper {
-        &self.byte_buffer
-    }
-
-    pub fn chunks_uniform_mut(&mut self) -> &mut BufferWrapper {
-        &mut self.chunks_uniform
-    }
-    pub fn chunks_uniform(&self) -> &BufferWrapper {
-        &self.chunks_uniform
-    }
-}
-
 #[async_trait]
 impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
@@ -149,7 +72,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let iterations = self.split_by_max_gpu_buffer_size(vec);
         let mut byte_stream = Vec::new();
         let mut metadata = 0usize;
-        let mut buffers = RunBuffers::default();
+        let mut buffers = wgpu_utils::RunBuffers::default();
         for iteration_values in iterations {
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();

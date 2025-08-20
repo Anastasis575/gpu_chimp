@@ -4,6 +4,7 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::step;
 use compress_utils::types::S;
+use compress_utils::wgpu_utils::RunBuffers;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -30,7 +31,48 @@ impl MaxGroupGnostic for CpuComputeSImpl {
 
 #[async_trait]
 impl ComputeS for CpuComputeSImpl {
-    async fn compute_s(&self, values: &mut [f64]) -> anyhow::Result<Vec<S>> {
+    // async fn compute_s(&self, values: &mut [f64]) -> anyhow::Result<Vec<S>> {
+    //     let mut Ss_vec = vec![S::default(); values.len() + 1];
+    //
+    //     //Calculating buffer sizes and workgroup counts
+    //     let workgroup_count = self.get_max_number_of_groups(values.len());
+    //     //info!("The wgpu workgroup size: {}", &workgroup_count);
+    //
+    //     let size_of_s = size_of::<S>();
+    //     let bytes = values.len() + 1;
+    //     //info!("The size of the input values vec: {}", bytes);
+    //
+    //     let s_buffer_size = (size_of_s * bytes) as BufferAddress;
+    //     //info!("The S buffer size in bytes: {}", s_buffer_size);
+    //
+    //     let mut padded_values = Vec::from(values);
+    //     padded_values.push(0f64);
+    //     let chunks = ChimpBufferInfo::get().chunks() as u32;
+    //
+    //     for workgroup in 0u32..max(workgroup_count as u32, 1) {
+    //         for invocation in 0u32..256u32 {
+    //             for i in 0u32..chunks {
+    //                 let index: usize =
+    //                     (workgroup * 256 * chunks + invocation + i * 256u32) as usize;
+    //                 Ss_vec[index + 1] = CpuComputeSImpl::calculate_s(
+    //                     (chunks * 256) as u32,
+    //                     index as u32,
+    //                     padded_values[index],
+    //                     padded_values[index + 1],
+    //                 );
+    //             }
+    //         }
+    //     }
+    //     //info!("Output result size: {}", Ss_vec.len());
+    //     step!(Step::ComputeS, {
+    //         Ss_vec
+    //             .iter()
+    //             .map(|it| format!("{}\n", it.to_string()))
+    //             .into_iter()
+    //     });
+    //     Ok(Ss_vec)
+    // }
+    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> anyhow::Result<()> {
         let mut Ss_vec = vec![S::default(); values.len() + 1];
 
         //Calculating buffer sizes and workgroup counts
@@ -69,7 +111,7 @@ impl ComputeS for CpuComputeSImpl {
                 .map(|it| format!("{}\n", it.to_string()))
                 .into_iter()
         });
-        Ok(Ss_vec)
+        Ok(())
     }
 }
 

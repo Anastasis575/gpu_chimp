@@ -170,6 +170,9 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                         .await?;
 
                     uncompressed_values.extend(block_values[0..total_uncompressed_values].iter());
+                    vec_window.clear();
+                    total_uncompressed_values = 0;
+                    input_indexes.clear();
                 }
             },
             total_millis,
@@ -207,12 +210,6 @@ impl GPUDecompressorBatched64 {
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f64>, DecompressionError> {
-        let util_64 = include_str!("shaders/64_utils.wgsl");
-
-        let shader_code = include_str!("shaders/decompress.wgsl")
-            .replace("//#include(64_utils)", util_64)
-            .to_string();
-
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
 
@@ -222,55 +219,71 @@ impl GPUDecompressorBatched64 {
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::<f64>::new();
         //info!("The wgpu workgroup size: {}", &workgroup_count);
-
+        let input_storage_buffer = BufferWrapper::storage_with_content(
+            self.device(),
+            bytemuck::cast_slice(&compressed_value_slice),
+            WgpuGroupId::new(0, 1),
+            Some("Storage input Buffer"),
+        );
+        //info!("Total output values: {}", buffer_value_count);
+        let in_size = BufferWrapper::storage_with_content(
+            self.device(),
+            bytemuck::cast_slice(&input_indexes),
+            WgpuGroupId::new(0, 3),
+            Some("Total bytes input"),
+        );
+        let out_buffer_size =
+            (input_indexes.len() - 1) * ChimpBufferInfo::get().buffer_size() * size_of::<f64>();
+        let out_staging = BufferWrapper::stage_with_size(
+            self.device(),
+            out_buffer_size as BufferAddress,
+            Some("Staging output Buffer"),
+        );
+        let out_storage_buffer = BufferWrapper::storage_with_size(
+            self.device(),
+            out_buffer_size as BufferAddress,
+            WgpuGroupId::new(0, 0),
+            Some("Storage output Buffer"),
+        );
         for iteration in 0..iterator_count {
+            let util_64 = include_str!("shaders/64_utils.wgsl");
+
             //split all the buffers to the chunks each iteration will use
             let is_last_iteration = iteration == iterator_count - 1;
-            let iteration_input_indexes = if is_last_iteration {
-                input_indexes[iteration * workgroup_count..].to_vec()
+            let offset = iteration * workgroup_count;
+            let next = if is_last_iteration {
+                input_indexes.len()
             } else {
-                input_indexes[iteration * workgroup_count..(iteration + 1) * workgroup_count]
-                    .to_vec()
+                (iteration + 1) * workgroup_count
             };
-            let first_index = iteration_input_indexes[0] as usize;
-            let iteration_compressed_values = if is_last_iteration {
-                compressed_value_slice[first_index..].to_vec()
-            } else {
-                compressed_value_slice
-                    [first_index..(iteration_input_indexes.last().unwrap().to_owned() as usize)]
-                    .to_vec()
-            };
+            let iteration_input_indexes = next - offset;
+            // let iteration_input_indexes = if is_last_iteration {
+            //     input_indexes[iteration * workgroup_count..].to_vec()
+            // } else {
+            //     input_indexes[iteration * workgroup_count..(iteration + 1) * workgroup_count]
+            //         .to_vec()
+            // };
+            let out_offset = input_indexes[iteration * workgroup_count];
+            let next_out = input_indexes[next - 1];
+            let iteration_compressed_values_len = next_out - out_offset;
+
+            // let iteration_compressed_values = if is_last_iteration {
+            //     compressed_value_slice[first_index..].to_vec()
+            // } else {
+            //     compressed_value_slice
+            //         [first_index..(iteration_input_indexes.last().unwrap().to_owned() as usize)]
+            //         .to_vec()
+            // };
 
             //info!(
             // "The size in bytes of the compressed input vec: {}",
             // iteration_compressed_values.len() * size_of::<u8>()
             // );
 
-            let out_buffer_size = (iteration_input_indexes.len() - 1)
-                * ChimpBufferInfo::get().buffer_size()
-                * size_of::<f64>();
             //info!(
             // "The uncompressed output values buffer size in bytes: {}",
             // out_buffer_size
             // );
-
-            let input_storage_buffer = BufferWrapper::storage_with_content(
-                self.device(),
-                bytemuck::cast_slice(iteration_compressed_values.as_slice()),
-                WgpuGroupId::new(0, 1),
-                Some("Storage input Buffer"),
-            );
-            let out_staging = BufferWrapper::stage_with_size(
-                self.device(),
-                out_buffer_size as BufferAddress,
-                Some("Staging output Buffer"),
-            );
-            let out_storage_buffer = BufferWrapper::storage_with_size(
-                self.device(),
-                out_buffer_size as BufferAddress,
-                WgpuGroupId::new(0, 0),
-                Some("Storage output Buffer"),
-            );
 
             let size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),
@@ -278,21 +291,19 @@ impl GPUDecompressorBatched64 {
                 WgpuGroupId::new(0, 2),
                 Some("Total input values"),
             );
-            //info!("Total output values: {}", buffer_value_count);
-            let in_size = BufferWrapper::storage_with_content(
-                self.device(),
-                bytemuck::cast_slice(&iteration_input_indexes),
-                WgpuGroupId::new(0, 3),
-                Some("Total bytes input"),
-            );
+
             let input_size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),
-                bytemuck::bytes_of(&iteration_compressed_values.len()),
+                bytemuck::bytes_of(&iteration_compressed_values_len),
                 WgpuGroupId::new(0, 4),
                 Some("Total input buffer length"),
             );
-            //info!("Total input values: {}", buffer_value_count);
 
+            let s_offset = format!("let in_offset={offset}u;");
+            let shader_code = include_str!("shaders/decompress.wgsl")
+                .replace("//#include(64_utils)", util_64)
+                .replace("@in_offset", &s_offset)
+                .to_string();
             execute_compute_shader!(
                 self.context(),
                 &shader_code,
@@ -304,20 +315,17 @@ impl GPUDecompressorBatched64 {
                     &in_size,
                     &input_size_uniform
                 ],
-                iteration_input_indexes.len() - 1,
+                iteration_input_indexes - 1,
                 Some("decompress pass")
             );
-
-            let output = wgpu_utils::get_s_output::<f64>(
-                self.context(),
-                out_storage_buffer.buffer(),
-                ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f64>())
-                    as BufferAddress,
-                out_staging.buffer(),
-            )
-            .await?;
-            result.extend(output);
         }
+        let result = wgpu_utils::get_from_gpu::<f64>(
+            self.context(),
+            out_storage_buffer.buffer(),
+            out_storage_buffer.size() as BufferAddress,
+            out_staging.buffer(),
+        )
+        .await?;
         //info!("Output result size: {}", result.len());
         Ok(result)
     }

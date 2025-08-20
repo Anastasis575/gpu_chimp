@@ -3,7 +3,9 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::S;
+use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
+use itertools::Itertools;
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -12,7 +14,7 @@ use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait ComputeS: MaxGroupGnostic {
-    async fn compute_s(&self, values: &mut [f64]) -> Result<Vec<S>>;
+    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> Result<()>;
 }
 
 pub struct ComputeSImpl {
@@ -52,7 +54,7 @@ impl MaxGroupGnostic for ComputeSImpl {
 
 #[async_trait]
 impl ComputeS for ComputeSImpl {
-    async fn compute_s(&self, values: &mut [f64]) -> Result<Vec<S>> {
+    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> Result<()> {
         // Create a shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );
 
@@ -82,8 +84,6 @@ impl ComputeS for ComputeSImpl {
             WgpuGroupId::new(0, 1),
             Some("Storage Input Buffer"),
         );
-        let s_staging_buffer =
-            BufferWrapper::stage_with_size(self.device(), s_buffer_size, Some("Staging S Buffer"));
         let s_storage_buffer = BufferWrapper::storage_with_size(
             self.device(),
             s_buffer_size,
@@ -99,30 +99,34 @@ impl ComputeS for ComputeSImpl {
         execute_compute_shader!(
             self.context(),
             &temp,
-            vec![
-                &s_storage_buffer,
-                &input_storage_buffer,
-                &s_staging_buffer,
-                &chunks_buffer
-            ],
+            vec![&s_storage_buffer, &input_storage_buffer, &chunks_buffer],
             workgroup_count,
             Some("calculate s pass")
         );
-
-        let output = wgpu_utils::get_s_output::<S>(
-            self.context(),
-            s_storage_buffer.buffer(),
-            s_buffer_size,
-            s_staging_buffer.buffer(),
-        )
-        .await?;
+        buffers.set_s_buffer(s_storage_buffer);
+        buffers.set_input_buffer(input_storage_buffer);
+        buffers.set_chunks(chunks_buffer);
         //info!("Output result size: {}", output.len());
+        let mut output;
+
         step!(Step::ComputeS, {
+            let s_staging_buffer = BufferWrapper::stage_with_size(
+                self.context().device(),
+                buffers.s_buffer().size() as BufferAddress,
+                None,
+            );
+            output = wgpu_utils::get_from_gpu::<S>(
+                self.context(),
+                buffers.s_buffer().buffer(),
+                buffers.s_buffer().size() as BufferAddress,
+                s_staging_buffer.buffer(),
+            )
+            .await?;
             output
                 .iter()
                 .map(|it| format!("{}\n", it.to_string()))
                 .into_iter()
         });
-        Ok(output)
+        Ok(())
     }
 }

@@ -1,8 +1,8 @@
-use crate::RunBuffers;
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::types::ChimpOutput;
+use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use std::cmp::max;
 use std::ops::Div;

@@ -2,14 +2,11 @@ use crate::cpu::utils_64::{extract_bits, insert_bits};
 use crate::finalize::Finalize;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{trace_steps, CompressResult};
-use compress_utils::general_utils::{ChimpBufferInfo, Step};
-use compress_utils::step;
+use compress_utils::general_utils::CompressResult;
 use compress_utils::types::ChimpOutput64;
+use compress_utils::wgpu_utils::RunBuffers;
 use itertools::Itertools;
 use std::cmp::{max, min};
-use std::fs;
-use std::ops::Div;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -36,69 +33,133 @@ impl CPUFinalizer64 {
 impl Finalize for CPUFinalizer64 {
     async fn finalize(
         &self,
-        chimp_output: &mut Vec<ChimpOutput64>,
+        buffers: &mut RunBuffers,
         padding: usize,
-        indexes: Vec<u32>,
     ) -> anyhow::Result<CompressResult> {
-        let chimp_input_length = chimp_output.len() - padding;
-        let _input_length = chimp_input_length;
-        let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
-        let size = ChimpBufferInfo::get().buffer_size();
-        let output_vec = vec![0u64; (*indexes.last().unwrap() + 1) as usize];
-        let mut writer = CPUWriter64::new(
-            chimp_output.to_owned(),
-            output_vec,
-            size as u32,
-            ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32,
-            indexes,
-        );
-        for workgroup in 0..max(workgroup_count, 1) {
-            let _ = writer.write(
-                (workgroup * size) as u32,
-                writer.last_byte_index[workgroup],
-                (workgroup_count - 1 == workgroup) as u32,
-                writer.last_byte_index[workgroup + 1],
-            );
-        }
-
-        let mut final_vec = writer
-            .out_vec
-            .iter()
-            .flat_map(|it| it.to_le_bytes())
-            .collect_vec();
-        // for (i, useful_byte_count) in writer.last_byte_index.iter().enumerate() {
-        //     let start_index = i * ChimpBufferInfo::get().buffer_size();
-        //     let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
-        //     let temp_vec = writer.out_vec[start_index..=byte_count]
-        //         .iter()
-        //         .flat_map(|it| it.to_be_bytes())
-        //         .collect_vec();
-        //     assert_eq!(
-        //         temp_vec.len(),
-        //         (byte_count + 1 - start_index) * size_of::<u64>()
+        // let chimp_input_length = chimp_output.len() - padding;
+        // let _input_length = chimp_input_length;
+        // let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
+        // let size = ChimpBufferInfo::get().buffer_size();
+        // let output_vec = vec![0u64; (*indexes.last().unwrap() + 1) as usize];
+        // let mut writer = CPUWriter64::new(
+        //     chimp_output.to_owned(),
+        //     output_vec,
+        //     size as u32,
+        //     ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32,
+        //     indexes,
+        // );
+        // for workgroup in 0..max(workgroup_count, 1) {
+        //     let _ = writer.write(
+        //         (workgroup * size) as u32,
+        //         writer.last_byte_index[workgroup],
+        //         (workgroup_count - 1 == workgroup) as u32,
+        //         writer.last_byte_index[workgroup + 1],
         //     );
-        //     let batch_size = if i == workgroup_count - 1
-        //         && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
-        //     {
-        //         ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
-        //     } else {
-        //         (ChimpBufferInfo::get().buffer_size() - 1) as u32
-        //     };
-        //     final_vec.extend(batch_size.to_be_bytes());
-        //     final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
-        //     final_vec.extend(temp_vec);
         // }
-        step!(&Step::Finalize, {
-            final_vec
-                .iter()
-                .chunks(8)
-                .into_iter()
-                .map(|chunk| chunk.map(|it| format!("{:08b}", it)).join(" ") + "\n")
-                .collect_vec()
-                .into_iter()
-        });
-        Ok(CompressResult(final_vec, workgroup_count * 8))
+        //
+        // let mut final_vec = writer
+        //     .out_vec
+        //     .iter()
+        //     .flat_map(|it| it.to_le_bytes())
+        //     .collect_vec();
+        // // for (i, useful_byte_count) in writer.last_byte_index.iter().enumerate() {
+        // //     let start_index = i * ChimpBufferInfo::get().buffer_size();
+        // //     let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
+        // //     let temp_vec = writer.out_vec[start_index..=byte_count]
+        // //         .iter()
+        // //         .flat_map(|it| it.to_be_bytes())
+        // //         .collect_vec();
+        // //     assert_eq!(
+        // //         temp_vec.len(),
+        // //         (byte_count + 1 - start_index) * size_of::<u64>()
+        // //     );
+        // //     let batch_size = if i == workgroup_count - 1
+        // //         && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
+        // //     {
+        // //         ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+        // //     } else {
+        // //         (ChimpBufferInfo::get().buffer_size() - 1) as u32
+        // //     };
+        // //     final_vec.extend(batch_size.to_be_bytes());
+        // //     final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
+        // //     final_vec.extend(temp_vec);
+        // // }
+        // step!(&Step::Finalize, {
+        //     final_vec
+        //         .iter()
+        //         .chunks(8)
+        //         .into_iter()
+        //         .map(|chunk| chunk.map(|it| format!("{:08b}", it)).join(" ") + "\n")
+        //         .collect_vec()
+        //         .into_iter()
+        // });
+        Ok(CompressResult(Vec::new(), 0))
     }
+    // async fn finalize(
+    //     &self,
+    //     chimp_output: &mut Vec<ChimpOutput64>,
+    //     padding: usize,
+    //     indexes: Vec<u32>,
+    // ) -> anyhow::Result<CompressResult> {
+    //     let chimp_input_length = chimp_output.len() - padding;
+    //     let _input_length = chimp_input_length;
+    //     let workgroup_count = chimp_output.len().div(ChimpBufferInfo::get().buffer_size());
+    //     let size = ChimpBufferInfo::get().buffer_size();
+    //     let output_vec = vec![0u64; (*indexes.last().unwrap() + 1) as usize];
+    //     let mut writer = CPUWriter64::new(
+    //         chimp_output.to_owned(),
+    //         output_vec,
+    //         size as u32,
+    //         ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32,
+    //         indexes,
+    //     );
+    //     for workgroup in 0..max(workgroup_count, 1) {
+    //         let _ = writer.write(
+    //             (workgroup * size) as u32,
+    //             writer.last_byte_index[workgroup],
+    //             (workgroup_count - 1 == workgroup) as u32,
+    //             writer.last_byte_index[workgroup + 1],
+    //         );
+    //     }
+    //
+    //     let mut final_vec = writer
+    //         .out_vec
+    //         .iter()
+    //         .flat_map(|it| it.to_le_bytes())
+    //         .collect_vec();
+    //     // for (i, useful_byte_count) in writer.last_byte_index.iter().enumerate() {
+    //     //     let start_index = i * ChimpBufferInfo::get().buffer_size();
+    //     //     let byte_count = min(*useful_byte_count as usize, chimp_input_length - 1);
+    //     //     let temp_vec = writer.out_vec[start_index..=byte_count]
+    //     //         .iter()
+    //     //         .flat_map(|it| it.to_be_bytes())
+    //     //         .collect_vec();
+    //     //     assert_eq!(
+    //     //         temp_vec.len(),
+    //     //         (byte_count + 1 - start_index) * size_of::<u64>()
+    //     //     );
+    //     //     let batch_size = if i == workgroup_count - 1
+    //     //         && chimp_input_length % ChimpBufferInfo::get().buffer_size() != 0
+    //     //     {
+    //     //         ((chimp_input_length % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+    //     //     } else {
+    //     //         (ChimpBufferInfo::get().buffer_size() - 1) as u32
+    //     //     };
+    //     //     final_vec.extend(batch_size.to_be_bytes());
+    //     //     final_vec.extend((temp_vec.len() as u32).to_be_bytes().iter());
+    //     //     final_vec.extend(temp_vec);
+    //     // }
+    //     step!(&Step::Finalize, {
+    //         final_vec
+    //             .iter()
+    //             .chunks(8)
+    //             .into_iter()
+    //             .map(|chunk| chunk.map(|it| format!("{:08b}", it)).join(" ") + "\n")
+    //             .collect_vec()
+    //             .into_iter()
+    //     });
+    //     Ok(CompressResult(final_vec, workgroup_count * 8))
+    // }
 }
 
 pub struct CPUWriter64 {

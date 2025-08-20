@@ -9,8 +9,9 @@ use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{
     ChimpBufferInfo, CompressResult, DeviceEnum, MaxGroupGnostic, Padding,
 };
-use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput64, S};
+use compress_utils::wgpu_utils::RunBuffers;
+use compress_utils::{time_it, wgpu_utils};
 use itertools::Itertools;
 use pollster::FutureExt;
 use std::ops::Div;
@@ -63,6 +64,7 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
         let mut iterations = self.split_by_max_gpu_buffer_size(vec);
         let mut byte_stream = Vec::new();
         let mut metadata = 0;
+
         for iteration_values in iterations {
             let mut total_millis = 0;
             let mut values = iteration_values;
@@ -72,28 +74,27 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
             let mut indexes: Vec<u32>;
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
+            let mut buffers = wgpu_utils::RunBuffers::default();
             values = add_padding_to_fit_buffer_count_64(values, buffer_size, &mut padding);
             time_it!(
                 {
-                    s_values = compute_s_impl.compute_s(&mut values).await?;
+                    compute_s_impl.compute_s(&mut values, &mut buffers).await?;
                 },
                 total_millis,
                 "s computation stage"
             );
             time_it!(
                 {
-                    chimp_vec = final_compress_impl
-                        .final_compress(&mut values, &mut s_values, 0)
-                        .await?;
+                    final_compress_impl.final_compress(&mut buffers).await?;
                 },
                 total_millis,
                 "compression stage"
             );
             time_it!(
                 {
-                    indexes = indexes_impl
+                    indexes_impl
                         .calculate_indexes(
-                            &mut chimp_vec,
+                            &mut buffers,
                             ChimpBufferInfo::get().buffer_size() as u32,
                         )
                         .await?;
@@ -103,9 +104,7 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
             );
             time_it!(
                 {
-                    output_vec = finalize_impl
-                        .finalize(&mut chimp_vec, padding.0, indexes)
-                        .await?;
+                    output_vec = finalize_impl.finalize(&mut buffers, padding.0).await?;
                 },
                 total_millis,
                 "trimming stage"
@@ -133,10 +132,13 @@ impl MaxGroupGnostic for ComputeS64Impls {
 
 #[async_trait]
 impl ComputeS for ComputeS64Impls {
-    async fn compute_s(&self, values: &mut [f64]) -> anyhow::Result<Vec<S>> {
+    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> anyhow::Result<()> {
         match self {
-            ComputeS64Impls::GPU(c) => c.compute_s(values).await,
-            ComputeS64Impls::CPU(c) => c.compute_s(values).await,
+            ComputeS64Impls::GPU(c) => c.compute_s(values, buffers).await,
+            ComputeS64Impls::CPU(c) => {
+                c.compute_s(values, buffers).await?;
+                Ok(())
+            }
         }
     }
 }
@@ -147,10 +149,13 @@ enum CalculateIndexesImpls {
 }
 #[async_trait]
 impl CalculateIndexes64 for CalculateIndexesImpls {
-    async fn calculate_indexes(&self, input: &[ChimpOutput64], size: u32) -> Result<Vec<u32>> {
+    async fn calculate_indexes(&self, buffers: &mut RunBuffers, size: u32) -> Result<()> {
         match self {
-            CalculateIndexesImpls::GPU(c) => c.calculate_indexes(input, size).await,
-            CalculateIndexesImpls::CPU(c) => c.calculate_indexes(input, size).await,
+            CalculateIndexesImpls::GPU(c) => c.calculate_indexes(buffers, size).await,
+            CalculateIndexesImpls::CPU(c) => {
+                // c.calculate_indexes(input, size).await?;
+                Ok(())
+            }
         }
     }
 }
@@ -171,15 +176,13 @@ impl MaxGroupGnostic for Compress64Impls {
 
 #[async_trait]
 impl FinalCompress for Compress64Impls {
-    async fn final_compress(
-        &self,
-        input: &mut Vec<f64>,
-        s_values: &mut Vec<S>,
-        padding: usize,
-    ) -> anyhow::Result<Vec<ChimpOutput64>> {
+    async fn final_compress(&self, run_buffers: &mut RunBuffers) -> anyhow::Result<()> {
         match self {
-            Compress64Impls::GPU(c) => c.final_compress(input, s_values, padding).await,
-            Compress64Impls::CPU(c) => c.final_compress(input, s_values, padding).await,
+            Compress64Impls::GPU(c) => c.final_compress(run_buffers).await,
+            Compress64Impls::CPU(c) => {
+                // c.final_compress(input, s_values, padding).await;
+                Ok(())
+            }
         }
     }
 }
@@ -192,13 +195,15 @@ enum Finalizer64impls {
 impl Finalize for Finalizer64impls {
     async fn finalize(
         &self,
-        chimp_output: &mut Vec<ChimpOutput64>,
+        run_buffers: &mut RunBuffers,
         padding: usize,
-        indexes: Vec<u32>,
     ) -> anyhow::Result<CompressResult> {
         match self {
-            Finalizer64impls::GPU(f) => f.finalize(chimp_output, padding, indexes).await,
-            Finalizer64impls::CPU(f) => f.finalize(chimp_output, padding, indexes).await,
+            Finalizer64impls::GPU(f) => f.finalize(run_buffers, padding).await,
+            Finalizer64impls::CPU(f) => {
+                // f.finalize(chimp_output, padding, indexes).await?;
+                Ok(CompressResult(Vec::new(), 0))
+            }
         }
     }
 }
@@ -214,8 +219,17 @@ impl ChimpCompressorBatched64 {
         }
     }
     fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f64>) -> Vec<Vec<f64>> {
-        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (2 * size_of::<ChimpOutput64>()); //The most costly buffer
+        let max = self.context.get_max_storage_buffer_size();
+        let mut split_by = max / size_of::<S>() - ChimpBufferInfo::get().buffer_size(); //The most costly buffer
+        while ((split_by + 10) * size_of::<S>()) as u64
+            >= self.context.get_max_storage_buffer_size() as u64
+            || ((split_by + 10) * size_of::<ChimpOutput64>()) as u64
+                >= self.context.get_max_storage_buffer_size() as u64
+        {
+            split_by -= ChimpBufferInfo::get().buffer_size();
+        }
         let closest = split_by - split_by % ChimpBufferInfo::get().buffer_size();
+
         let x = vec.chunks(closest).map(|it| it.to_vec()).collect_vec();
         x
     }
@@ -487,8 +501,8 @@ mod tests {
                             "Decoding time {} values:  {decompression_time}\n",
                             value_new.len()
                         ));
-                        fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values, value_new);
                     }
                     Err(err) => {

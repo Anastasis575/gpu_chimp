@@ -1,10 +1,9 @@
-use crate::RunBuffers;
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult, Step};
 use compress_utils::types::ChimpOutput;
-use compress_utils::wgpu_utils::get_from_gpu;
+use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{
     execute_compute_shader, general_utils, step, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
@@ -72,11 +71,12 @@ impl Finalize for Finalizer {
 
         //info!("The length of the input vec: {}", chimp_input_length);
         let index_staging = BufferWrapper::stage_with_size(
-            self.context.device(),
+            self.context().device(),
             buffers.index_buffer().size() as BufferAddress,
             None,
         );
-        let indexes = get_from_gpu::<u32>(
+
+        let indexes = wgpu_utils::get_from_gpu::<u32>(
             self.context(),
             buffers.index_buffer().buffer(),
             buffers.index_buffer().size() as BufferAddress,
@@ -92,12 +92,12 @@ impl Finalize for Finalizer {
         //info!("The wgpu workgroup size: {}", &workgroup_count);
 
         let out_stage_buffer = BufferWrapper::stage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             Some("Staging Output Buffer"),
         );
         let out_storage_buffer = BufferWrapper::storage_with_size(
-            self.device(),
+            self.context().device(),
             output_buffer_size,
             WgpuGroupId::new(0, 0),
             Some("Staging Output Buffer"),

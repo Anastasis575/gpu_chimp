@@ -1,7 +1,5 @@
-use crate::finalize::Finalize;
 use bytemuck::Contiguous;
 use compress_utils::types::ChimpOutput;
-use itertools::Itertools;
 use std::cmp::{max, min};
 
 #[derive(Debug, Default)]
