@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use thiserror::Error;
 use wgpu::{Adapter, Device, Queue, RequestDeviceError};
+use wgpu_types::Limits;
 
 #[derive(Debug)]
 pub struct Context {
@@ -54,6 +55,12 @@ impl Context {
     pub fn get_max_workgroup_size(&self) -> usize {
         self.adapter.limits().max_compute_workgroups_per_dimension as usize
     }
+    pub fn get_max_storage_buffer_size(&self) -> usize {
+        self.device.limits().max_storage_buffer_binding_size as usize
+    }
+    pub fn get_max_buffer_size(&self) -> usize {
+        self.device.limits().max_buffer_size as usize
+    }
 
     pub async fn initialize_default_adapter() -> Result<Self, UtilError> {
         Self::_initialize(None).await
@@ -79,12 +86,18 @@ impl Context {
                 .await
                 .map_err(|_| UtilError::Unintialized)?
         };
-
+        let limits = adapter.limits();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::SHADER_F64 | wgpu::Features::SHADER_INT64,
-                required_limits: wgpu::Limits::downlevel_defaults(),
+                required_limits: Limits {
+                    max_storage_buffer_binding_size: adapter
+                        .limits()
+                        .max_storage_buffer_binding_size,
+                    max_buffer_size: adapter.limits().max_buffer_size,
+                    ..wgpu::Limits::downlevel_defaults()
+                },
                 memory_hints: wgpu::MemoryHints::MemoryUsage,
                 trace: wgpu_types::Trace::Off,
             })

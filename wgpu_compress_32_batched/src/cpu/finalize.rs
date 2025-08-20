@@ -1,11 +1,8 @@
 use crate::finalize::Finalize;
-use async_trait::async_trait;
 use bytemuck::Contiguous;
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, CompressResult, Step};
 use compress_utils::types::ChimpOutput;
 use itertools::Itertools;
 use std::cmp::{max, min};
-use std::fs;
 
 #[derive(Debug, Default)]
 pub struct CPUImpl {}
@@ -153,89 +150,89 @@ impl CPUImplHelper {
         current_i
     }
 }
-#[async_trait]
-impl Finalize for CPUImpl {
-    async fn finalize(
-        &self,
-        chimp_output: &mut Vec<ChimpOutput>,
-        padding: usize,
-        _indexes: Vec<u32>,
-    ) -> anyhow::Result<CompressResult> {
-        //The number of iterations
-        let workgroup_count = chimp_output.len() / ChimpBufferInfo::get().buffer_size();
-
-        let actual_output = chimp_output[0..chimp_output.len() - padding].to_vec();
-
-        let mut metadata_size_in_bytes = 0;
-
-        // The output needs at worst  twice the number of 32-bit numbers to be coded along with one
-        // space for the size of the workgroup in bytes
-        // We come across this instance when each consecutive number in the series is too different from the other.
-        let out = vec![0; workgroup_count + (2 * actual_output.len())];
-
-        // The index of the final usable u32 in the out vector
-        let last_size = vec![0; workgroup_count];
-
-        let mut helper = CPUImplHelper {
-            chimp_input: actual_output.to_owned(),
-            size: ChimpBufferInfo::get().buffer_size() as u32,
-            out,
-            last_size,
-        };
-
-        //for each workgroup write the bytes concec
-        let mut current_index = 0u32;
-        for i in 0..workgroup_count {
-            current_index = helper.write(
-                current_index as usize,
-                i * ChimpBufferInfo::get().buffer_size(),
-            );
-            helper.last_size[i] = current_index;
-            current_index += 1;
-        }
-        let mut final_output = Vec::new();
-
-        for i in 0..workgroup_count {
-            let start_index = if i == 0 {
-                0
-            } else {
-                helper.last_size[i - 1] + 1
-            };
-            let final_iter =
-                helper.out[start_index as usize..=(helper.last_size[i] as usize)].to_vec();
-            let final_byte_vec = final_iter
-                .iter()
-                .flat_map(|it| it.to_be_bytes())
-                .collect_vec();
-
-            let batch_size = if i == workgroup_count - 1
-                && helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size() != 0
-            {
-                ((helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size()) - 1) as u32
-            } else {
-                (ChimpBufferInfo::get().buffer_size() - 1) as u32
-            };
-
-            metadata_size_in_bytes += 2 * size_of::<u32>();
-            final_output.extend(batch_size.to_be_bytes());
-            final_output.extend((final_byte_vec.len() as u32).to_be_bytes());
-            final_output.extend(&final_byte_vec);
-        }
-
-        if trace_steps().contains(&Step::Finalize) {
-            let trace_path = Step::Finalize.get_trace_file();
-            let mut trace_output = String::new();
-
-            final_output
-                .iter()
-                .enumerate()
-                .for_each(|it| trace_output.push_str(&format!("{}:{:08b}\n", it.0, it.1)));
-
-            fs::write(&trace_path, trace_output)?;
-        }
-        Ok(CompressResult(final_output, metadata_size_in_bytes))
-    }
-}
+// #[async_trait]
+// impl Finalize for CPUImpl {
+//     async fn finalize(
+//         &self,
+//         chimp_output: &mut Vec<ChimpOutput>,
+//         padding: usize,
+//         _indexes: Vec<u32>,
+//     ) -> anyhow::Result<CompressResult> {
+//         //The number of iterations
+//         let workgroup_count = chimp_output.len() / ChimpBufferInfo::get().buffer_size();
+//
+//         let actual_output = chimp_output[0..chimp_output.len() - padding].to_vec();
+//
+//         let mut metadata_size_in_bytes = 0;
+//
+//         // The output needs at worst  twice the number of 32-bit numbers to be coded along with one
+//         // space for the size of the workgroup in bytes
+//         // We come across this instance when each consecutive number in the series is too different from the other.
+//         let out = vec![0; workgroup_count + (2 * actual_output.len())];
+//
+//         // The index of the final usable u32 in the out vector
+//         let last_size = vec![0; workgroup_count];
+//
+//         let mut helper = CPUImplHelper {
+//             chimp_input: actual_output.to_owned(),
+//             size: ChimpBufferInfo::get().buffer_size() as u32,
+//             out,
+//             last_size,
+//         };
+//
+//         //for each workgroup write the bytes concec
+//         let mut current_index = 0u32;
+//         for i in 0..workgroup_count {
+//             current_index = helper.write(
+//                 current_index as usize,
+//                 i * ChimpBufferInfo::get().buffer_size(),
+//             );
+//             helper.last_size[i] = current_index;
+//             current_index += 1;
+//         }
+//         let mut final_output = Vec::new();
+//
+//         for i in 0..workgroup_count {
+//             let start_index = if i == 0 {
+//                 0
+//             } else {
+//                 helper.last_size[i - 1] + 1
+//             };
+//             let final_iter =
+//                 helper.out[start_index as usize..=(helper.last_size[i] as usize)].to_vec();
+//             let final_byte_vec = final_iter
+//                 .iter()
+//                 .flat_map(|it| it.to_be_bytes())
+//                 .collect_vec();
+//
+//             let batch_size = if i == workgroup_count - 1
+//                 && helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size() != 0
+//             {
+//                 ((helper.chimp_input.len() % ChimpBufferInfo::get().buffer_size()) - 1) as u32
+//             } else {
+//                 (ChimpBufferInfo::get().buffer_size() - 1) as u32
+//             };
+//
+//             metadata_size_in_bytes += 2 * size_of::<u32>();
+//             final_output.extend(batch_size.to_be_bytes());
+//             final_output.extend((final_byte_vec.len() as u32).to_be_bytes());
+//             final_output.extend(&final_byte_vec);
+//         }
+//
+//         if trace_steps().contains(&Step::Finalize) {
+//             let trace_path = Step::Finalize.get_trace_file();
+//             let mut trace_output = String::new();
+//
+//             final_output
+//                 .iter()
+//                 .enumerate()
+//                 .for_each(|it| trace_output.push_str(&format!("{}:{:08b}\n", it.0, it.1)));
+//
+//             fs::write(&trace_path, trace_output)?;
+//         }
+//         Ok(CompressResult(final_output, metadata_size_in_bytes))
+//     }
+// }
 
 fn get_fitting(bits_rest_to_write: u32, writeable_output_remaining: u32) -> u32 {
     min(bits_rest_to_write, writeable_output_remaining)

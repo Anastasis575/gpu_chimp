@@ -114,6 +114,7 @@ impl ChimpCompressor {
             self.context(),
             &binding_group_layout,
             vec![&s_storage_buffer, &input_storage_buffer, &s_staging_buffer],
+            None,
         );
 
         let mut s_encoder = self
@@ -132,7 +133,7 @@ impl ChimpCompressor {
 
         self.queue().submit(Some(s_encoder.finish()));
 
-        let output = wgpu_utils::get_s_output::<S>(
+        let output = wgpu_utils::get_from_gpu::<S>(
             self.context(),
             s_storage_buffer.buffer(),
             s_buffer_size,
@@ -241,7 +242,7 @@ impl ChimpCompressor {
 
         self.queue().submit(Some(s_encoder.finish()));
 
-        let output = wgpu_utils::get_s_output::<ChimpOutput>(
+        let output = wgpu_utils::get_from_gpu::<ChimpOutput>(
             self.context(),
             output_storage_buffer.buffer(),
             output_buffer_size,

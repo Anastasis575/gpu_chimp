@@ -227,7 +227,7 @@ impl BatchedGPUDecompressor {
                 Some("decompress pass")
             );
 
-            let output = wgpu_utils::get_s_output::<f32>(
+            let output = wgpu_utils::get_from_gpu::<f32>(
                 self.context(),
                 out_storage_buffer.buffer(),
                 ((iteration_input_indexes.len() - 1) * buffer_value_count * size_of::<f32>())

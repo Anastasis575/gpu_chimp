@@ -126,7 +126,7 @@ fn pseudo_u64_add(output:vec2<u32>,number:u32)->vec2<u32>{
 @compute
 @workgroup_size(256)
 fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation_id) invocation_id: vec3<u32>) {
-     for (var i=0u;i<chunks;i++){
+    for (var i=0u;i<chunks;i++){
         let index:u32=workgroup_id.x * 256 * chunks + invocation_id.x+i*256u;
         out[index+1] = compress(in[index+1],s_store[index+1],in[index],s_store[index]);
     }

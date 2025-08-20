@@ -18,8 +18,8 @@ use compress_utils::general_utils::CompressResult;
 pub use compress_utils::general_utils::{
     add_padding_to_fit_buffer_count, ChimpBufferInfo, DeviceEnum, Padding,
 };
-use compress_utils::time_it;
 use compress_utils::types::{ChimpOutput, S};
+use compress_utils::{time_it, BufferWrapper};
 use itertools::Itertools;
 use log::info;
 use pollster::FutureExt;
@@ -35,13 +35,12 @@ pub enum FinalizerImpl {
 impl Finalize for FinalizerImpl {
     async fn finalize(
         &self,
-        chimp_output: &mut Vec<ChimpOutput>,
+        run_buffers: &mut RunBuffers,
         padding: usize,
-        indexes: Vec<u32>,
     ) -> Result<CompressResult> {
         match self {
-            FinalizerImpl::GPU(impll) => impll.finalize(chimp_output, padding, indexes).await,
-            FinalizerImpl::CPU(impll) => impll.finalize(chimp_output, padding, indexes).await,
+            FinalizerImpl::GPU(impll) => impll.finalize(run_buffers, padding).await,
+            FinalizerImpl::CPU(impll) => Ok(CompressResult(Vec::new(), 0)), //impll.finalize(chimp_output, padding, indexes).await,
         }
     }
 }
@@ -61,6 +60,84 @@ impl Default for ChimpCompressorBatched {
     }
 }
 
+#[derive(Default)]
+struct RunBuffers {
+    input_buffer: BufferWrapper,
+    s_buffer: BufferWrapper,
+    chunks_uniform: BufferWrapper,
+    compressed_buffer: BufferWrapper,
+    index_buffer: BufferWrapper,
+    byte_buffer: BufferWrapper,
+}
+
+impl RunBuffers {
+    pub fn set_input_buffer(&mut self, input_buffer: BufferWrapper) {
+        self.input_buffer = input_buffer;
+    }
+
+    pub fn set_s_buffer(&mut self, s_buffer: BufferWrapper) {
+        self.s_buffer = s_buffer;
+    }
+
+    pub fn set_compressed_buffer(&mut self, compressed_buffer: BufferWrapper) {
+        self.compressed_buffer = compressed_buffer;
+    }
+
+    pub fn set_index_buffer(&mut self, index_buffer: BufferWrapper) {
+        self.index_buffer = index_buffer;
+    }
+
+    pub fn set_byte_buffer(&mut self, byte_buffer: BufferWrapper) {
+        self.byte_buffer = byte_buffer;
+    }
+    pub fn set_chunks(&mut self, chunks_buffer: BufferWrapper) {
+        self.chunks_uniform = chunks_buffer;
+    }
+
+    pub fn input_buffer_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.input_buffer
+    }
+    pub fn input_buffer(&self) -> &BufferWrapper {
+        &self.input_buffer
+    }
+
+    pub fn s_buffer_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.s_buffer
+    }
+    pub fn s_buffer(&self) -> &BufferWrapper {
+        &self.s_buffer
+    }
+
+    pub fn compressed_buffer_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.compressed_buffer
+    }
+    pub fn compressed_buffer(&self) -> &BufferWrapper {
+        &self.compressed_buffer
+    }
+
+    pub fn index_buffer_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.index_buffer
+    }
+
+    pub fn index_buffer(&self) -> &BufferWrapper {
+        &self.index_buffer
+    }
+
+    pub fn byte_buffer_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.byte_buffer
+    }
+    pub fn byte_buffer(&self) -> &BufferWrapper {
+        &self.byte_buffer
+    }
+
+    pub fn chunks_uniform_mut(&mut self) -> &mut BufferWrapper {
+        &mut self.chunks_uniform
+    }
+    pub fn chunks_uniform(&self) -> &BufferWrapper {
+        &self.chunks_uniform
+    }
+}
+
 #[async_trait]
 impl Compressor<f32> for ChimpCompressorBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
@@ -72,6 +149,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let iterations = self.split_by_max_gpu_buffer_size(vec);
         let mut byte_stream = Vec::new();
         let mut metadata = 0usize;
+        let mut buffers = RunBuffers::default();
         for iteration_values in iterations {
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
@@ -80,19 +158,29 @@ impl Compressor<f32> for ChimpCompressorBatched {
             let mut total_millis: u128 = 0;
             let mut s_values: Vec<S>;
             let mut chimp_vec: Vec<ChimpOutput>;
-            let mut indexes;
+            // let mut indexes;
             let output_vec;
             time_it!(
                 {
-                    s_values = compute_s_impl.compute_s(&mut values).await?;
+                    compute_s_impl.compute_s(&mut values, &mut buffers).await?;
                 },
                 total_millis,
                 "s computation stage"
             );
             time_it!(
                 {
-                    chimp_vec = final_compress_impl
-                        .final_compress(&mut values, &mut s_values, 0)
+                    final_compress_impl.final_compress(&mut buffers).await?;
+                },
+                total_millis,
+                "final output stage"
+            );
+            time_it!(
+                {
+                    calculate_indexes_impl
+                        .calculate_indexes(
+                            &mut buffers,
+                            ChimpBufferInfo::get().buffer_size() as u32,
+                        )
                         .await?;
                 },
                 total_millis,
@@ -100,18 +188,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
             );
             time_it!(
                 {
-                    indexes = calculate_indexes_impl
-                        .calculate_indexes(&chimp_vec, ChimpBufferInfo::get().buffer_size() as u32)
-                        .await?;
-                },
-                total_millis,
-                "final output stage"
-            );
-            time_it!(
-                {
-                    output_vec = finalize_impl
-                        .finalize(&mut chimp_vec, padding.0, indexes)
-                        .await?;
+                    output_vec = finalize_impl.finalize(&mut buffers, padding.0).await?;
                 },
                 total_millis,
                 "final Result collection"
@@ -136,7 +213,15 @@ impl ChimpCompressorBatched {
     }
 
     fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f32>) -> Vec<Vec<f32>> {
-        let split_by = Self::MAX_BUFFER_SIZE_BYTES / (10 * size_of::<S>()); //The most costly buffer
+        let max = self.context.get_max_storage_buffer_size();
+        let mut split_by = max / size_of::<S>() - ChimpBufferInfo::get().buffer_size(); //The most costly buffer
+        while ((split_by + 10) * size_of::<S>()) as u64
+            >= self.context.get_max_storage_buffer_size() as u64
+            || ((split_by + 10) * size_of::<ChimpOutput>()) as u64
+                >= self.context.get_max_storage_buffer_size() as u64
+        {
+            split_by -= ChimpBufferInfo::get().buffer_size();
+        }
         let closest = split_by - split_by % ChimpBufferInfo::get().buffer_size();
 
         let x = vec.chunks(closest).map(|it| it.to_vec()).collect_vec();
@@ -387,7 +472,7 @@ mod tests {
                 .expect("Could not read test values")
                 .to_vec();
 
-            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 500_000_000);
 
             for size_checkpoint in (1..11).progress() {
                 while let Some(block) = reader.next() {

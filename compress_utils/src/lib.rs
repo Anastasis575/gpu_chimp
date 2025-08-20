@@ -2,9 +2,11 @@ pub mod context;
 pub mod cpu_compress;
 pub mod types;
 
+use crate::BufferWrapper::UnInitialized;
 use wgpu::util::DeviceExt;
 use wgpu::{Buffer, BufferAddress, BufferUsages, Device};
 
+#[derive(Debug)]
 /// Buffer Wrapper enum to encapsulate the assignment
 pub enum BufferWrapper {
     StorageBuffer {
@@ -23,6 +25,12 @@ pub enum BufferWrapper {
         group: u32,
         binding: u32,
     },
+    UnInitialized,
+}
+impl Default for BufferWrapper {
+    fn default() -> Self {
+        UnInitialized {}
+    }
 }
 
 pub struct WgpuGroupId {
@@ -35,6 +43,31 @@ impl WgpuGroupId {
     }
 }
 impl BufferWrapper {
+    pub fn size(&self) -> usize {
+        match self {
+            BufferWrapper::StorageBuffer { size, .. } => *size,
+            BufferWrapper::StagingBuffer { size, .. } => *size,
+            BufferWrapper::Uniform { size, .. } => *size,
+            BufferWrapper::UnInitialized => unreachable!(),
+        }
+    }
+    pub fn with_binding(&mut self, id: WgpuGroupId) -> &mut Self {
+        match self {
+            BufferWrapper::StorageBuffer { binding, group, .. } => {
+                *binding = id.binding;
+                *group = id.group;
+                self
+            }
+            BufferWrapper::StagingBuffer { .. } => self,
+            BufferWrapper::Uniform { binding, group, .. } => {
+                *group = id.group;
+                *binding = id.binding;
+                self
+            }
+            BufferWrapper::UnInitialized { .. } => self,
+        }
+    }
+
     ///Buffer getter
     pub fn buffer(&self) -> &Buffer {
         match self {
@@ -52,6 +85,7 @@ impl BufferWrapper {
                 size: _size,
                 ..
             } => buffer,
+            BufferWrapper::UnInitialized => unreachable!(),
         }
     }
     ///Create a staging buffer with pre-existing-content defined in the bytes in [contents] with an optional [label]
@@ -209,6 +243,7 @@ pub mod wgpu_utils {
                         count: None,
                     });
                 }
+                BufferWrapper::UnInitialized => {}
             }
         }
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -239,7 +274,7 @@ pub mod wgpu_utils {
         Ok(compute_pipeline)
     }
 
-    pub async fn get_s_output<T: Pod>(
+    pub async fn get_from_gpu<T: Pod>(
         context: &Context,
         storage_buffer: &Buffer,
         bytes: BufferAddress,
@@ -271,21 +306,26 @@ pub mod wgpu_utils {
         let mut count = 0;
         for buffer_wrap in buffers {
             match buffer_wrap {
-                BufferWrapper::StorageBuffer { buffer, .. } => {
+                BufferWrapper::StorageBuffer {
+                    buffer, binding, ..
+                } => {
                     entries.push(wgpu::BindGroupEntry {
-                        binding: count,
+                        binding: *binding,
                         resource: buffer.as_entire_binding(),
                     });
                     count += 1;
                 }
                 BufferWrapper::StagingBuffer { .. } => {}
-                BufferWrapper::Uniform { buffer, .. } => {
+                BufferWrapper::Uniform {
+                    buffer, binding, ..
+                } => {
                     entries.push(wgpu::BindGroupEntry {
-                        binding: count,
+                        binding: *binding,
                         resource: buffer.as_entire_binding(),
                     });
                     count += 1;
                 }
+                BufferWrapper::UnInitialized => {}
             }
         }
         context
