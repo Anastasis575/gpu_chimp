@@ -134,5 +134,7 @@ fn write(idx:u32,out_idx:u32,is_last:u32,next_idx:u32)->u32{
 @compute
 @workgroup_size(1)
 fn main(@builtin(workgroup_id) global_id: vec3<u32>,@builtin(num_workgroups) count: vec3<u32>) {
-    write(global_id.x*size,last_byte_index[global_id.x],u32(global_id.x==count.x- 1u),last_byte_index[global_id.x+1u]);
+    //@workgroup_offset
+    //@last_pass
+    write((workgroup_offset+global_id.x)*size,last_byte_index[(workgroup_offset+global_id.x)],last_pass*u32((global_id.x)==count.x- 1u),last_byte_index[(workgroup_offset+global_id.x)+1u]);
 }

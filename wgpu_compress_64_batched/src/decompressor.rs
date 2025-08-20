@@ -303,7 +303,7 @@ impl GPUDecompressorBatched64 {
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
 
         //how many iterations I need to fully decompress all the buffers
-        let iterator_count = max((input_indexes.len() - 1) / workgroup_count, 1);
+        let iterator_count = ((input_indexes.len() - 1) / workgroup_count) + 1;
 
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::<f64>::new();
@@ -334,8 +334,13 @@ impl GPUDecompressorBatched64 {
             WgpuGroupId::new(0, 0),
             Some("Storage output Buffer"),
         );
+        let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
             let util_64 = include_str!("shaders/64_utils.wgsl");
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                iteration * self.context.get_max_workgroup_size()
+            );
 
             //split all the buffers to the chunks each iteration will use
             let is_last_iteration = iteration == iterator_count - 1;
@@ -343,7 +348,7 @@ impl GPUDecompressorBatched64 {
             let next = if is_last_iteration {
                 input_indexes.len()
             } else {
-                (iteration + 1) * workgroup_count
+                ((iteration + 1) * workgroup_count) + 1
             };
             let iteration_input_indexes = next - offset;
             // let iteration_input_indexes = if is_last_iteration {
@@ -365,7 +370,7 @@ impl GPUDecompressorBatched64 {
 
             let input_size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),
-                bytemuck::bytes_of(&iteration_compressed_values_len),
+                bytemuck::bytes_of(&compressed_value_slice.len()),
                 WgpuGroupId::new(0, 4),
                 Some("Total input buffer length"),
             );
@@ -373,7 +378,7 @@ impl GPUDecompressorBatched64 {
             let s_offset = format!("let in_offset={offset}u;");
             let shader_code = include_str!("shaders/decompress.wgsl")
                 .replace("//#include(64_utils)", util_64)
-                .replace("//@in_offset", &s_offset)
+                .replace("//@workgroup_offset", &offset_decl)
                 .to_string();
             execute_compute_shader!(
                 self.context(),

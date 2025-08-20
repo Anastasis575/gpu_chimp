@@ -56,14 +56,6 @@ impl MaxGroupGnostic for ComputeSImpl {
 impl ComputeS for ComputeSImpl {
     async fn compute_s(&self, values: &mut [f32], buffers: &mut RunBuffers) -> Result<()> {
         // Create a shader module and pipeline
-        // let workgroup_size = format!("@workgroup_size({})", );
-
-        let temp = include_str!("shaders/compute_s.wgsl")
-            .replace(
-                "@@workgroup_size",
-                &ChimpBufferInfo::get().buffer_size().to_string(),
-            )
-            .to_string();
 
         //Calculating buffer sizes and workgroup counts
         let workgroup_count = self.get_max_number_of_groups(values.len());
@@ -98,18 +90,38 @@ impl ComputeS for ComputeSImpl {
             WgpuGroupId::new(0, 2),
             Some("Chunks Buffer"),
         );
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![
-                &s_storage_buffer,
-                &input_storage_buffer,
-                &s_staging_buffer,
-                &chunks_buffer
-            ],
-            workgroup_count,
-            Some("compute s layout")
-        );
+
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let temp = include_str!("shaders/compute_s.wgsl")
+                .replace(
+                    "@@workgroup_size",
+                    &ChimpBufferInfo::get().buffer_size().to_string(),
+                )
+                .replace("//@workgroup_offset", &offset_decl)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![
+                    &s_storage_buffer,
+                    &input_storage_buffer,
+                    &s_staging_buffer,
+                    &chunks_buffer
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("compute s layout")
+            );
+        }
         buffers.set_input_buffer(input_storage_buffer);
         buffers.set_s_buffer(s_storage_buffer);
         buffers.set_chunks(chunks_buffer);

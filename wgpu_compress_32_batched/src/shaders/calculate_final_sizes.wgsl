@@ -21,9 +21,11 @@ struct Output{
 @compute
 @workgroup_size(1)
 fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>) {
+    //@workgroup_offset
+
     var sum=0u;
      for (var i=0u;i<size;i++){
-        sum += in[workgroup_id.x *size + i].useful_size;
+        sum += in[(workgroup_offset+workgroup_id.x) *size + i].useful_size;
     }
-    last_byte_index[workgroup_id.x+1]=u32(sum/32) +3u;
+    last_byte_index[(workgroup_offset+workgroup_id.x)+1]=u32(sum/32) +3u;
 }

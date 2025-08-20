@@ -72,18 +72,40 @@ impl FinalCompress for FinalCompressImpl64 {
                 .chunks_uniform_mut()
                 .with_binding(WgpuGroupId::new(0, 3));
         }
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![
-                buffers.s_buffer(),
-                buffers.input_buffer(),
-                &output_storage_buffer,
-                buffers.chunks_uniform(),
-            ],
-            workgroup_count,
-            Some("compress pass")
-        );
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let last_pass = format!(
+                "let last_pass={}u;",
+                if i == iterations - 1 { 1 } else { 0 }
+            );
+            let utils_64 = include_str!("shaders/64_utils.wgsl");
+            let temp = include_str!("shaders/chimp_compress.wgsl")
+                .replace("//#include(64_utils)", utils_64)
+                .replace("//@workgroup_offset", &offset_decl)
+                .replace("//@last_pass", &last_pass)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![
+                    buffers.s_buffer(),
+                    buffers.input_buffer(),
+                    &output_storage_buffer,
+                    buffers.chunks_uniform(),
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("compress pass")
+            );
+        }
 
         {
             buffers
@@ -97,18 +119,35 @@ impl FinalCompress for FinalCompressImpl64 {
         }
 
         let initialize_shadder = include_str!("shaders/initialize_first_per_buffer.wgsl");
-
-        execute_compute_shader!(
-            self.context(),
-            &initialize_shadder.replace("//#include(64_utils)", utils_64),
-            vec![
-                output_storage_buffer.with_binding(WgpuGroupId::new(0, 0)),
-                buffers.input_buffer(),
-                buffers.chunks_uniform()
-            ],
-            workgroup_count,
-            Some("initialize pass")
-        );
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let last_pass = format!(
+                "let last_pass={}u;",
+                if i == iterations - 1 { 1 } else { 0 }
+            );
+            execute_compute_shader!(
+                self.context(),
+                &initialize_shadder
+                    .replace("//@workgroup_offset", &offset_decl)
+                    .replace("//#include(64_utils)", utils_64),
+                vec![
+                    output_storage_buffer.with_binding(WgpuGroupId::new(0, 0)),
+                    buffers.input_buffer(),
+                    buffers.chunks_uniform()
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("initialize pass")
+            );
+        }
         buffers.set_compressed_buffer(output_storage_buffer);
         let mut final_output;
 

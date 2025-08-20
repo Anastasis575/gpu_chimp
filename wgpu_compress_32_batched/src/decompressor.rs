@@ -6,7 +6,7 @@ use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
 use pollster::FutureExt;
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
 use wgpu::{Device, Queue};
@@ -113,9 +113,9 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
         let mut current_index = 0usize;
         let mut uncompressed_values = Vec::new();
         let mut total_millis = 0;
-        let compressed_bytes_vec: &[u32] = bytemuck::cast_slice(&compressed_bytes_vec);
         time_it!(
             {
+                let compressed_bytes_vec: &[u32] = bytemuck::cast_slice(&compressed_bytes_vec);
                 let mut vec_window = Vec::new();
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
@@ -215,17 +215,12 @@ impl BatchedGPUDecompressor {
         input_indexes: &[u32],
         buffer_value_count: usize,
     ) -> Result<Vec<f32>, DecompressionError> {
-        let shader_code = include_str!("shaders/decompress.wgsl");
-
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
 
         //how many iterations I need to fully decompress all the buffers
-        let iterator_count = max((input_indexes.len() - 1) / workgroup_count, 1);
+        let iterator_count = ((input_indexes.len() - 1) / workgroup_count) + 1;
 
-        //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
-        let mut result = Vec::<f32>::new();
-        //info!("The wgpu workgroup size: {}", &workgroup_count);
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(&compressed_value_slice),
@@ -252,14 +247,22 @@ impl BatchedGPUDecompressor {
             WgpuGroupId::new(0, 0),
             Some("Storage output Buffer"),
         );
+        let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                iteration * self.context.get_max_workgroup_size()
+            );
+            let shader_code = include_str!("shaders/decompress.wgsl")
+                .replace("//@workgroup_offset", &offset_decl);
+
             //split all the buffers to the chunks each iteration will use
             let is_last_iteration = iteration == iterator_count - 1;
             let offset = iteration * workgroup_count;
             let next = if is_last_iteration {
                 input_indexes.len()
             } else {
-                (iteration + 1) * workgroup_count
+                ((iteration + 1) * workgroup_count) + 1
             };
             let iteration_input_indexes = next - offset;
             // let iteration_input_indexes = if is_last_iteration {
@@ -285,8 +288,13 @@ impl BatchedGPUDecompressor {
                 WgpuGroupId::new(0, 4),
                 Some("Total input buffer length"),
             );
-            //info!("Total input values: {}", buffer_value_count);
-
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                iteration * self.context.get_max_workgroup_size()
+            );
+            let shader_code = include_str!("shaders/decompress.wgsl")
+                .replace("//@workgroup_offset", &offset_decl)
+                .to_string();
             execute_compute_shader!(
                 self.context(),
                 &shader_code,

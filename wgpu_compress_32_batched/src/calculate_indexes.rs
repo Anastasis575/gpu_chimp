@@ -1,6 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
+use compress_utils::general_utils::ChimpBufferInfo;
 use compress_utils::types::ChimpOutput;
 use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
@@ -57,17 +58,36 @@ impl CalculateIndexes for GPUCalculateIndexes {
             WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![
-                &out_storage_buffer,
-                buffers.compressed_buffer(),
-                &size_uniform
-            ],
-            workgroup_count,
-            Some("calculate indexes pass")
-        );
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let temp = include_str!("shaders/calculate_final_sizes.wgsl")
+                .replace(
+                    "@@workgroup_size",
+                    &ChimpBufferInfo::get().buffer_size().to_string(),
+                )
+                .replace("//@workgroup_offset", &offset_decl)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![
+                    &out_storage_buffer,
+                    buffers.compressed_buffer(),
+                    &size_uniform
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("calculate indexes pass")
+            );
+        }
 
         // let mut output = wgpu_utils::get_s_output::<u32>(
         //     self.context(),
@@ -94,6 +114,7 @@ impl CalculateIndexes for GPUCalculateIndexes {
             WgpuGroupId::new(0, 1),
             Some("Size Uniform Buffer"),
         );
+
         execute_compute_shader!(
             self.context(),
             r#"

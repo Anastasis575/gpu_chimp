@@ -96,13 +96,32 @@ impl ComputeS for ComputeSImpl {
             WgpuGroupId::new(0, 2),
             Some("Chunks Buffer"),
         );
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![&s_storage_buffer, &input_storage_buffer, &chunks_buffer],
-            workgroup_count,
-            Some("calculate s pass")
-        );
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let temp = include_str!("shaders/compute_s.wgsl")
+                .replace(
+                    "@@workgroup_size",
+                    &ChimpBufferInfo::get().buffer_size().to_string(),
+                )
+                .replace("//@workgroup_offset", &offset_decl)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![&s_storage_buffer, &input_storage_buffer, &chunks_buffer],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("calculate s pass")
+            );
+        }
         buffers.set_s_buffer(s_storage_buffer);
         buffers.set_input_buffer(input_storage_buffer);
         buffers.set_chunks(chunks_buffer);

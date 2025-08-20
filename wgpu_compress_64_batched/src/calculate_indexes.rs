@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::trace_steps;
 use compress_utils::general_utils::Step;
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo};
 use compress_utils::types::ChimpOutput64;
 use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
@@ -62,18 +62,38 @@ impl CalculateIndexes64 for GPUCalculateIndexes64 {
             WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![
-                &out_storage_buffer,
-                buffers.compressed_buffer(),
-                &size_uniform,
-            ],
-            workgroup_count,
-            Some("calculate indexes pass")
-        );
-
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let util_64 = include_str!("shaders/64_utils.wgsl");
+            let temp = include_str!("shaders/calculate_final_sizes.wgsl")
+                .replace("//#include(64_utils)", util_64)
+                .replace(
+                    "@@workgroup_size",
+                    &ChimpBufferInfo::get().buffer_size().to_string(),
+                )
+                .replace("//@workgroup_offset", &offset_decl)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![
+                    &out_storage_buffer,
+                    buffers.compressed_buffer(),
+                    &size_uniform
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("calculate indexes pass")
+            );
+        }
         let size_uniform = BufferWrapper::uniform_with_content(
             self.context().device(),
             bytemuck::bytes_of(&workgroup_count),

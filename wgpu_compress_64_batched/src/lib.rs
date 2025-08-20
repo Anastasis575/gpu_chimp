@@ -363,7 +363,7 @@ mod tests {
             let mut values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
-            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 50_000_000);
+            let mut reader = TimeSeriesReader::new(50_000, values.clone(), 500_000_000);
             for size_checkpoint in 1..11 {
                 while let Some(block) = reader.next() {
                     values.extend(block);

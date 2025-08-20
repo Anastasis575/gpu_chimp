@@ -102,21 +102,42 @@ impl Finalize for Finalizer64 {
             WgpuGroupId::new(0, 4),
             Some("Last buffer size Uniform Buffer"),
         );
-
-        execute_compute_shader!(
-            self.context(),
-            &temp,
-            vec![
-                &out_stage_buffer,
-                &out_storage_buffer,
-                buffers.compressed_buffer(),
-                &size_uniform,
-                buffers.index_buffer(),
-                &last_size_uniform,
-            ],
-            workgroup_count,
-            Some("trim pass")
-        );
+        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
+        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        for i in 0..iterations {
+            let offset_decl = format!(
+                "let workgroup_offset={}u;",
+                i * self.context.get_max_workgroup_size()
+            );
+            let last_pass = format!(
+                "let last_pass={}u;",
+                if i == iterations - 1 { 1 } else { 0 }
+            );
+            let util_64 = include_str!("shaders/64_utils.wgsl");
+            let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
+                .replace("//#include(64_utils)", util_64)
+                .replace("//@workgroup_offset", &offset_decl)
+                .replace("//@last_pass", &last_pass)
+                .to_string();
+            execute_compute_shader!(
+                self.context(),
+                &temp,
+                vec![
+                    &out_stage_buffer,
+                    &out_storage_buffer,
+                    buffers.compressed_buffer(),
+                    &size_uniform,
+                    buffers.index_buffer(),
+                    &last_size_uniform,
+                ],
+                if i == iterations - 1 {
+                    last_size
+                } else {
+                    self.context.get_max_workgroup_size()
+                },
+                Some("trim pass")
+            );
+        }
 
         let output = wgpu_utils::get_from_gpu::<u8>(
             self.context(),
