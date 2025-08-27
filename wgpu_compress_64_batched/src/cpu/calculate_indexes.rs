@@ -11,7 +11,12 @@ pub struct CPUCalculateIndexes64 {
 
 #[async_trait]
 impl CalculateIndexes64 for CPUCalculateIndexes64 {
-    async fn calculate_indexes(&self, input: &mut RunBuffers, size: u32) -> Result<()> {
+    async fn calculate_indexes(
+        &self,
+        input: &mut RunBuffers,
+        size: u32,
+        skip_time: &mut u128,
+    ) -> Result<()> {
         // let mut indexes = input
         //     .chunks(size as usize)
         //     .map(|chunk| (chunk.iter().map(|it| it.bit_count as u32).sum::<u32>() / 64u32) + 2u32)

@@ -1,5 +1,5 @@
 use crate::bit_utils::{BitReadable, BitWritable, ToBitVec};
-use crate::general_utils::CompressResult;
+use crate::general_utils::{CompressResult, DecompressResult};
 use async_trait::async_trait;
 use bit_vec::BitVec;
 use thiserror::Error;
@@ -49,7 +49,10 @@ pub trait Compressor<T> {
 
 #[async_trait]
 pub trait Decompressor<T> {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<T>, DecompressionError>;
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<T>, DecompressionError>;
 }
 #[async_trait]
 impl Compressor<f32> for CPUCompressor {
@@ -89,13 +92,16 @@ impl Compressor<f32> for CPUCompressor {
             }
             last_lead = lead;
         }
-        Ok(CompressResult(bit_vec.to_bytes(), 0))
+        Ok(CompressResult(bit_vec.to_bytes(), 0, 0))
     }
 }
 
 #[async_trait]
 impl Decompressor<f32> for CPUCompressor {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f32>, DecompressionError> {
         let input_vector = BitVec::from_bytes(vec.as_slice());
         let mut input_index: usize;
         let first_num_u32: u32 = input_vector.reinterpret_u32(0, 32);
@@ -189,7 +195,7 @@ impl Decompressor<f32> for CPUCompressor {
             }
         }
 
-        Ok(output)
+        Ok(output.into())
     }
 }
 
@@ -213,7 +219,10 @@ impl<T> Decompressor<f32> for TimedDecompressor<T>
 where
     T: Decompressor<f32> + Send + Sync,
 {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f32>, DecompressionError> {
         let mut total_millis: u128 = 0;
         let times = std::time::Instant::now();
         // log:: //info!("Started cpu decompression stage");
@@ -225,7 +234,7 @@ where
         // log:: //info!("Stage execution time: {}ms", times.elapsed().as_millis());
         // log:: //info!("Total time elapsed: {}ms", total_millis);
         // log:: //info!("============================");
-        Ok(output)
+        Ok(output.into())
     }
 }
 

@@ -10,11 +10,17 @@ use std::cmp::max;
 use std::fs;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait ComputeS: MaxGroupGnostic {
-    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> Result<()>;
+    async fn compute_s(
+        &self,
+        values: &mut [f64],
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> Result<()>;
 }
 
 pub struct ComputeSImpl {
@@ -54,7 +60,12 @@ impl MaxGroupGnostic for ComputeSImpl {
 
 #[async_trait]
 impl ComputeS for ComputeSImpl {
-    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> Result<()> {
+    async fn compute_s(
+        &self,
+        values: &mut [f64],
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> Result<()> {
         // Create a shader module and pipeline
         // let workgroup_size = format!("@workgroup_size({})", );
 
@@ -78,6 +89,7 @@ impl ComputeS for ComputeSImpl {
 
         let mut padded_values = Vec::from(values);
         padded_values.push(0f64);
+        let instant = Instant::now();
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(padded_values.as_slice()),
@@ -96,6 +108,7 @@ impl ComputeS for ComputeSImpl {
             WgpuGroupId::new(0, 2),
             Some("Chunks Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
         let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
         let last_size = workgroup_count % self.context.get_max_workgroup_size();
         for i in 0..iterations {

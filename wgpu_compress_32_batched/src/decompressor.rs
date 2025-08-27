@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
+use compress_utils::general_utils::{
+    trace_steps, ChimpBufferInfo, DecompressResult, MaxGroupGnostic, Step,
+};
 use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
@@ -9,6 +11,7 @@ use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
@@ -109,10 +112,11 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
-    ) -> Result<Vec<f32>, DecompressionError> {
+    ) -> Result<DecompressResult<f32>, DecompressionError> {
         let mut current_index = 0usize;
         let mut uncompressed_values = Vec::new();
         let mut total_millis = 0;
+        let mut skip_time = 0;
         time_it!(
             {
                 let compressed_bytes_vec: &[u32] = bytemuck::cast_slice(&compressed_bytes_vec);
@@ -171,6 +175,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                             vec_window.as_slice(),
                             input_indexes.as_slice(),
                             ChimpBufferInfo::get().buffer_size(),
+                            &mut skip_time,
                         )
                         .await?;
 
@@ -189,7 +194,7 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
                 .map(|it: &f32| it.to_string())
                 .into_iter()
         });
-        Ok(uncompressed_values)
+        Ok(DecompressResult(uncompressed_values, skip_time))
     }
 }
 
@@ -214,6 +219,7 @@ impl BatchedGPUDecompressor {
         compressed_value_slice: &[u32],
         input_indexes: &[u32],
         buffer_value_count: usize,
+        skip_time: &mut u128,
     ) -> Result<Vec<f32>, DecompressionError> {
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
@@ -221,6 +227,7 @@ impl BatchedGPUDecompressor {
         //how many iterations I need to fully decompress all the buffers
         let iterator_count = ((input_indexes.len() - 1) / workgroup_count) + 1;
 
+        let instant = Instant::now();
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(&compressed_value_slice),
@@ -247,6 +254,8 @@ impl BatchedGPUDecompressor {
             WgpuGroupId::new(0, 0),
             Some("Storage output Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
+
         let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
             let offset_decl = format!(
@@ -310,6 +319,7 @@ impl BatchedGPUDecompressor {
                 Some("decompress pass")
             );
         }
+        let instant = Instant::now();
         let result = wgpu_utils::get_from_gpu::<f32>(
             self.context(),
             out_storage_buffer.buffer(),
@@ -317,6 +327,8 @@ impl BatchedGPUDecompressor {
             out_staging.buffer(),
         )
         .await?;
+        *skip_time += instant.elapsed().as_millis();
+
         //info!("Output result size: {}", result.len());
         Ok(result)
     }

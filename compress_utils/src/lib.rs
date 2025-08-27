@@ -541,7 +541,7 @@ pub mod general_utils {
     use std::str::FromStr;
 
     #[derive(Debug, Default, Serialize, Deserialize)]
-    pub struct CompressResult(pub Vec<u8>, pub usize);
+    pub struct CompressResult(pub Vec<u8>, pub usize, pub u128);
     impl CompressResult {
         pub fn compressed_value_ref(&self) -> &Vec<u8> {
             &self.0
@@ -556,6 +556,9 @@ pub mod general_utils {
         pub fn metadata_size(&self) -> usize {
             self.1
         }
+        pub fn skip_time(&self) -> u128 {
+            self.2
+        }
     }
     impl From<CompressResult> for Vec<u8> {
         fn from(value: CompressResult) -> Self {
@@ -565,7 +568,35 @@ pub mod general_utils {
 
     impl From<Vec<u8>> for CompressResult {
         fn from(value: Vec<u8>) -> Self {
-            Self(value, 0usize)
+            Self(value, 0usize, 0u128)
+        }
+    }
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    pub struct DecompressResult<T>(pub Vec<T>, pub u128);
+    impl<T> DecompressResult<T> {
+        pub fn un_compressed_value_ref(&self) -> &Vec<T> {
+            &self.0
+        }
+
+        pub fn un_compressed_value(self) -> Vec<T> {
+            self.0
+        }
+        pub fn un_compressed_value_mut(&mut self) -> &mut Vec<T> {
+            &mut self.0
+        }
+        pub fn skip_time(&self) -> u128 {
+            self.1
+        }
+    }
+    impl<T> From<DecompressResult<T>> for Vec<T> {
+        fn from(value: DecompressResult<T>) -> Self {
+            value.0
+        }
+    }
+
+    impl<T> From<Vec<T>> for DecompressResult<T> {
+        fn from(value: Vec<T>) -> Self {
+            Self(value, 0u128)
         }
     }
     pub trait MaxGroupGnostic {

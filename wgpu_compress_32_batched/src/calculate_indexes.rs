@@ -8,11 +8,17 @@ use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGrou
 use std::cmp::max;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait CalculateIndexes {
-    async fn calculate_indexes(&self, buffers: &mut RunBuffers, size: u32) -> Result<()>;
+    async fn calculate_indexes(
+        &self,
+        buffers: &mut RunBuffers,
+        size: u32,
+        skip_time: &mut u128,
+    ) -> Result<()>;
 }
 
 pub struct GPUCalculateIndexes {
@@ -31,7 +37,12 @@ impl GPUCalculateIndexes {
 
 #[async_trait]
 impl CalculateIndexes for GPUCalculateIndexes {
-    async fn calculate_indexes(&self, buffers: &mut RunBuffers, size: u32) -> Result<()> {
+    async fn calculate_indexes(
+        &self,
+        buffers: &mut RunBuffers,
+        size: u32,
+        skip_time: &mut u128,
+    ) -> Result<()> {
         let temp = include_str!("shaders/calculate_final_sizes.wgsl").to_string();
         let workgroup_count =
             (buffers.compressed_buffer().size() / size_of::<ChimpOutput>()).div(size as usize);
@@ -41,12 +52,14 @@ impl CalculateIndexes for GPUCalculateIndexes {
         //     output_buffer_size as BufferAddress,
         //     Some("Staging Output Buffer"),
         // );
+        let instant = Instant::now();
         let out_storage_buffer = BufferWrapper::storage_with_size(
             self.context().device(),
             output_buffer_size as BufferAddress,
             WgpuGroupId::new(0, 0),
             Some("Storage Output Buffer"),
         );
+
         {
             buffers
                 .compressed_buffer_mut()
@@ -58,6 +71,7 @@ impl CalculateIndexes for GPUCalculateIndexes {
             WgpuGroupId::new(0, 2),
             Some("Size Uniform Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
         let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
         let last_size = workgroup_count % self.context.get_max_workgroup_size();
         for i in 0..iterations {

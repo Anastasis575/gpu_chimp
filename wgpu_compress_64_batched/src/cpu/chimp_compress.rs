@@ -145,7 +145,11 @@ impl FinalCompress for CPUFinalCompressImpl64 {
     //     });
     //     Ok(final_output)
     // }
-    async fn final_compress(&self, buffers: &mut RunBuffers) -> anyhow::Result<()> {
+    async fn final_compress(
+        &self,
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> anyhow::Result<()> {
         // let chunks = ChimpBufferInfo::get().chunks();
         // let mut output_vec = vec![ChimpOutput64::default(); s_values.len()];
         // input.push(0f64);

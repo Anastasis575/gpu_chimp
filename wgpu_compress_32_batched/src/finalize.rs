@@ -11,6 +11,7 @@ use itertools::Itertools;
 use std::cmp::max;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use std::{fs, vec};
 use wgpu_types::BufferAddress;
 
@@ -20,6 +21,7 @@ pub trait Finalize {
         &self,
         buffers: &mut RunBuffers,
         padding: usize,
+        skip_time: &mut u128,
     ) -> Result<general_utils::CompressResult>;
 }
 
@@ -48,7 +50,12 @@ impl Finalizer {
 
 #[async_trait]
 impl Finalize for Finalizer {
-    async fn finalize(&self, buffers: &mut RunBuffers, padding: usize) -> Result<CompressResult> {
+    async fn finalize(
+        &self,
+        buffers: &mut RunBuffers,
+        padding: usize,
+        skip_time: &mut u128,
+    ) -> Result<CompressResult> {
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
         let size_of_out = size_of::<u32>();
 
@@ -91,6 +98,7 @@ impl Finalize for Finalizer {
         let workgroup_count = chimp_input_len.div(ChimpBufferInfo::get().buffer_size());
         //info!("The wgpu workgroup size: {}", &workgroup_count);
 
+        let instant = Instant::now();
         let out_stage_buffer = BufferWrapper::stage_with_size(
             self.context().device(),
             output_buffer_size,
@@ -138,6 +146,7 @@ impl Finalize for Finalizer {
             WgpuGroupId::new(0, 4),
             Some("Useful Staging Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
 
         let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
         let last_size = workgroup_count % self.context.get_max_workgroup_size();
@@ -173,7 +182,7 @@ impl Finalize for Finalizer {
                 Some("trim pass")
             );
         }
-
+        let instant = Instant::now();
         let output = wgpu_utils::get_from_gpu::<u8>(
             self.context(),
             out_storage_buffer.buffer(),
@@ -181,6 +190,7 @@ impl Finalize for Finalizer {
             out_stage_buffer.buffer(),
         )
         .await?;
+        *skip_time += instant.elapsed().as_millis();
 
         let final_vec = output;
         // for (i, useful_byte_count) in indexes.iter().enumerate() {
@@ -212,6 +222,6 @@ impl Finalize for Finalizer {
                 .collect_vec()
                 .into_iter()
         });
-        Ok(CompressResult(final_vec, metadata_size_in_bytes))
+        Ok(CompressResult(final_vec, metadata_size_in_bytes, 0))
     }
 }

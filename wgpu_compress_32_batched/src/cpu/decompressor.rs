@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bit_vec::BitVec;
 use compress_utils::bit_utils::BitReadable;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, Step};
+use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, DecompressResult, Step};
 use compress_utils::time_it;
 use itertools::Itertools;
 use log::trace;
@@ -125,7 +125,10 @@ impl BatchedDecompressorCpu {
         }
         Ok(output)
     }
-    pub fn decompress_impl(&self, vec: &[u8]) -> Result<Vec<f32>, BatchedDecompressorError> {
+    pub fn decompress_impl(
+        &self,
+        vec: &[u8],
+    ) -> Result<DecompressResult<f32>, BatchedDecompressorError> {
         let mut current_index = 0usize;
         let mut output = Vec::new();
         let mut total_millis = 0;
@@ -157,13 +160,16 @@ impl BatchedDecompressorCpu {
             total_millis,
             "decompression"
         );
-        Ok(output)
+        Ok(output.into())
     }
 }
 
 #[async_trait]
 impl Decompressor<f32> for BatchedDecompressorCpu {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f32>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f32>, DecompressionError> {
         self.decompress_impl(vec).map_err(DecompressionError::from)
     }
 }
@@ -175,7 +181,7 @@ impl Decompressor<f32> for DebugBatchDecompressorCpu {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
-    ) -> Result<Vec<f32>, DecompressionError> {
+    ) -> Result<DecompressResult<f32>, DecompressionError> {
         let mut current_index = 0usize;
         let uncompressed_values;
         let mut total_millis = 0;
@@ -236,7 +242,7 @@ impl Decompressor<f32> for DebugBatchDecompressorCpu {
             total_millis,
             "decompression"
         );
-        Ok(uncompressed_values)
+        Ok(uncompressed_values.into())
     }
 }
 

@@ -72,7 +72,12 @@ impl ComputeS for CpuComputeSImpl {
     //     });
     //     Ok(Ss_vec)
     // }
-    async fn compute_s(&self, values: &mut [f64], buffers: &mut RunBuffers) -> anyhow::Result<()> {
+    async fn compute_s(
+        &self,
+        values: &mut [f64],
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> anyhow::Result<()> {
         let mut Ss_vec = vec![S::default(); values.len() + 1];
 
         //Calculating buffer sizes and workgroup counts

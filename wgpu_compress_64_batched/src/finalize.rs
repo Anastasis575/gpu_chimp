@@ -9,12 +9,18 @@ use itertools::Itertools;
 use std::cmp::max;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use std::{fs, vec};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait Finalize {
-    async fn finalize(&self, buffers: &mut RunBuffers, padding: usize) -> Result<CompressResult>;
+    async fn finalize(
+        &self,
+        buffers: &mut RunBuffers,
+        padding: usize,
+        skip_time: &mut u128,
+    ) -> Result<CompressResult>;
 }
 
 #[derive(Debug)]
@@ -33,12 +39,17 @@ impl Finalizer64 {
 
 #[async_trait]
 impl Finalize for Finalizer64 {
-    async fn finalize(&self, buffers: &mut RunBuffers, padding: usize) -> Result<CompressResult> {
+    async fn finalize(
+        &self,
+        buffers: &mut RunBuffers,
+        padding: usize,
+        skip_time: &mut u128,
+    ) -> Result<CompressResult> {
         let util_64 = include_str!("shaders/64_utils.wgsl");
         let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
             .replace("//#include(64_utils)", util_64)
             .to_string();
-
+        let instant = Instant::now();
         let index_staging = BufferWrapper::stage_with_size(
             self.context().device(),
             buffers.index_buffer().size() as BufferAddress,
@@ -102,6 +113,7 @@ impl Finalize for Finalizer64 {
             WgpuGroupId::new(0, 4),
             Some("Last buffer size Uniform Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
         let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
         let last_size = workgroup_count % self.context.get_max_workgroup_size();
         for i in 0..iterations {
@@ -138,7 +150,7 @@ impl Finalize for Finalizer64 {
                 Some("trim pass")
             );
         }
-
+        let instant = Instant::now();
         let output = wgpu_utils::get_from_gpu::<u8>(
             self.context(),
             out_storage_buffer.buffer(),
@@ -146,7 +158,7 @@ impl Finalize for Finalizer64 {
             out_stage_buffer.buffer(),
         )
         .await?;
-
+        *skip_time += instant.elapsed().as_millis();
         let mut final_vec = output;
 
         step!(&Step::Finalize, {
@@ -158,6 +170,6 @@ impl Finalize for Finalizer64 {
                 .collect_vec()
                 .into_iter()
         });
-        Ok(CompressResult(final_vec, workgroup_count * 8))
+        Ok(CompressResult(final_vec, workgroup_count * 8, 0))
     }
 }

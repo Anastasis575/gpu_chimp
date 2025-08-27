@@ -35,6 +35,7 @@ impl Finalize for CPUFinalizer64 {
         &self,
         buffers: &mut RunBuffers,
         padding: usize,
+        skip_time: &mut u128,
     ) -> anyhow::Result<CompressResult> {
         // let chimp_input_length = chimp_output.len() - padding;
         // let _input_length = chimp_input_length;
@@ -93,7 +94,7 @@ impl Finalize for CPUFinalizer64 {
         //         .collect_vec()
         //         .into_iter()
         // });
-        Ok(CompressResult(Vec::new(), 0))
+        Ok(CompressResult(Vec::new(), 0, 0))
     }
     // async fn finalize(
     //     &self,

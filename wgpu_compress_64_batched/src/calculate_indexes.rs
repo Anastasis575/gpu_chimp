@@ -11,11 +11,17 @@ use std::cmp::max;
 use std::fs;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait CalculateIndexes64 {
-    async fn calculate_indexes(&self, input: &mut RunBuffers, size: u32) -> Result<()>;
+    async fn calculate_indexes(
+        &self,
+        input: &mut RunBuffers,
+        size: u32,
+        skip_time: &mut u128,
+    ) -> Result<()>;
 }
 
 pub struct GPUCalculateIndexes64 {
@@ -34,22 +40,25 @@ impl GPUCalculateIndexes64 {
 
 #[async_trait]
 impl CalculateIndexes64 for GPUCalculateIndexes64 {
-    async fn calculate_indexes(&self, buffers: &mut RunBuffers, size: u32) -> Result<()> {
+    async fn calculate_indexes(
+        &self,
+        buffers: &mut RunBuffers,
+        size: u32,
+        skip_time: &mut u128,
+    ) -> Result<()> {
         let util_64 = include_str!("shaders/64_utils.wgsl");
-        let temp = include_str!("shaders/calculate_final_sizes.wgsl")
-            .replace("//#include(64_utils)", util_64)
-            .to_string();
         let input_len = buffers.compressed_buffer().size() / size_of::<ChimpOutput64>();
         let workgroup_count = input_len.div(size as usize);
         let output_buffer_size = (workgroup_count + 1) * size_of::<u32>();
 
+        let instant = Instant::now();
         let mut out_storage_buffer = BufferWrapper::storage_with_size(
             self.context().device(),
             output_buffer_size as BufferAddress,
             WgpuGroupId::new(0, 0),
             Some("Staging Output Buffer"),
         );
-
+        *skip_time += instant.elapsed().as_millis();
         {
             buffers
                 .compressed_buffer_mut()

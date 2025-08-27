@@ -9,11 +9,16 @@ use std::cmp::max;
 use std::fs;
 use std::ops::Div;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
 pub trait FinalCompress: MaxGroupGnostic {
-    async fn final_compress(&self, buffers: &mut RunBuffers) -> anyhow::Result<()>;
+    async fn final_compress(
+        &self,
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> anyhow::Result<()>;
 }
 
 pub struct FinalCompressImpl64 {
@@ -42,7 +47,11 @@ impl MaxGroupGnostic for FinalCompressImpl64 {
 
 #[async_trait]
 impl FinalCompress for FinalCompressImpl64 {
-    async fn final_compress(&self, buffers: &mut RunBuffers) -> anyhow::Result<()> {
+    async fn final_compress(
+        &self,
+        buffers: &mut RunBuffers,
+        skip_time: &mut u128,
+    ) -> anyhow::Result<()> {
         let utils_64 = include_str!("shaders/64_utils.wgsl");
         let temp = include_str!("shaders/chimp_compress.wgsl")
             .replace("//#include(64_utils)", utils_64)
@@ -53,12 +62,15 @@ impl FinalCompress for FinalCompressImpl64 {
         let output_buffer_size = (size_of_output * input_length) as BufferAddress;
 
         let workgroup_count = self.get_max_number_of_groups(input_length);
+
+        let instant = Instant::now();
         let mut output_storage_buffer = BufferWrapper::storage_with_size(
             self.context().device(),
             output_buffer_size,
             WgpuGroupId::new(0, 2),
             Some("Storage Output Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
         {
             buffers.s_buffer_mut().with_binding(WgpuGroupId::new(0, 0));
         }

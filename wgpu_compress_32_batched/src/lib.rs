@@ -38,10 +38,11 @@ impl Finalize for FinalizerImpl {
         &self,
         run_buffers: &mut RunBuffers,
         padding: usize,
+        skip_time: &mut u128,
     ) -> Result<CompressResult> {
         match self {
-            FinalizerImpl::GPU(impll) => impll.finalize(run_buffers, padding).await,
-            FinalizerImpl::CPU(impll) => Ok(CompressResult(Vec::new(), 0)), //impll.finalize(chimp_output, padding, indexes).await,
+            FinalizerImpl::GPU(impll) => impll.finalize(run_buffers, padding, skip_time).await,
+            FinalizerImpl::CPU(impll) => Ok(CompressResult(Vec::new(), 0, 0)), //impll.finalize(chimp_output, padding, indexes).await,
         }
     }
 }
@@ -73,6 +74,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
         let mut byte_stream = Vec::new();
         let mut metadata = 0usize;
         let mut buffers = wgpu_utils::RunBuffers::default();
+        let mut skip_time = 0u128;
         for iteration_values in iterations {
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
@@ -85,14 +87,18 @@ impl Compressor<f32> for ChimpCompressorBatched {
             let output_vec;
             time_it!(
                 {
-                    compute_s_impl.compute_s(&mut values, &mut buffers).await?;
+                    compute_s_impl
+                        .compute_s(&mut values, &mut buffers, &mut skip_time)
+                        .await?;
                 },
                 total_millis,
                 "s computation stage"
             );
             time_it!(
                 {
-                    final_compress_impl.final_compress(&mut buffers).await?;
+                    final_compress_impl
+                        .final_compress(&mut buffers, &mut skip_time)
+                        .await?;
                 },
                 total_millis,
                 "final output stage"
@@ -103,6 +109,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
                         .calculate_indexes(
                             &mut buffers,
                             ChimpBufferInfo::get().buffer_size() as u32,
+                            &mut skip_time,
                         )
                         .await?;
                 },
@@ -111,7 +118,9 @@ impl Compressor<f32> for ChimpCompressorBatched {
             );
             time_it!(
                 {
-                    output_vec = finalize_impl.finalize(&mut buffers, padding.0).await?;
+                    output_vec = finalize_impl
+                        .finalize(&mut buffers, padding.0, &mut skip_time)
+                        .await?;
                 },
                 total_millis,
                 "final Result collection"
@@ -120,7 +129,7 @@ impl Compressor<f32> for ChimpCompressorBatched {
             metadata += output_vec.metadata_size()
         }
 
-        Ok(CompressResult(byte_stream, metadata))
+        Ok(CompressResult(byte_stream, metadata, skip_time))
     }
 }
 
@@ -292,7 +301,7 @@ mod tests {
         .into_iter()
         {
             println!("{file_name}");
-            let filename = format!("{}_chimp32_output.txt", &file_name);
+            let filename = format!("{}_chimp32_output_no_io.txt", &file_name);
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
@@ -325,8 +334,9 @@ mod tests {
                     value_new.len()
                 ));
                 messages.push(format!(
-                    "Encoding time {} values: {compression_time}\n",
-                    value_new.len()
+                    "Encoding time {} values: {}\n",
+                    value_new.len(),
+                    compression_time - compressed_values2.skip_time()
                 ));
 
                 let time = std::time::Instant::now();
@@ -338,12 +348,13 @@ mod tests {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
                         messages.push(format!(
-                            "Decoding time {} values: {decompression_time}\n",
-                            value_new.len()
+                            "Decoding time {} values: {}\n",
+                            value_new.len(),
+                            decompression_time - decompressed_values.skip_time()
                         ));
                         // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
                         // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
-                        assert_eq!(decompressed_values, value_new);
+                        assert_eq!(decompressed_values.0, value_new);
                     }
                     Err(err) => {
                         eprintln!("Decompression error: {:?}", err);
@@ -439,7 +450,7 @@ mod tests {
                         ));
                         // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
                         // fs::write("expected.log", values.iter().join("\n")).unwrap();
-                        assert_eq!(decompressed_values, value_new);
+                        assert_eq!(decompressed_values.0, value_new);
                     }
                     Err(err) => {
                         eprintln!("Decompression error: {:?}", err);
@@ -458,6 +469,7 @@ mod tests {
             }
         }
     }
+
     #[test]
     fn test_decompress_able_old() {
         // let value_count = 0..(256 * 109);
@@ -507,7 +519,7 @@ mod tests {
             Ok(decompressed_values) => {
                 // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
                 // fs::write("expected.log", values.iter().join("\n")).unwrap();
-                assert_eq!(decompressed_values, values)
+                assert_eq!(decompressed_values.0, values)
             }
             Err(err) => {
                 eprintln!("Decompression error: {:?}", err);

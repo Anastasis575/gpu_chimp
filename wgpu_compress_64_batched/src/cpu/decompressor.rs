@@ -3,7 +3,7 @@ use crate::ChimpCompressorBatched64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
-use compress_utils::general_utils::trace_steps;
+use compress_utils::general_utils::{trace_steps, DecompressResult};
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{step, time_it};
 use itertools::Itertools;
@@ -21,7 +21,10 @@ impl MaxGroupGnostic for CPUDecompressorBatched64 {
 }
 #[async_trait]
 impl Decompressor<f64> for CPUDecompressorBatched64 {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f64>, DecompressionError> {
         let mut current_index = 0usize;
         let mut uncompressed_values = Vec::new();
         let mut total_millis = 0;
@@ -91,7 +94,7 @@ impl Decompressor<f64> for CPUDecompressorBatched64 {
             total_millis,
             "decompression"
         );
-        Ok(uncompressed_values)
+        Ok(uncompressed_values.into())
     }
 }
 impl CPUDecompressorBatched64 {

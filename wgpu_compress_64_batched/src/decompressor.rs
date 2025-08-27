@@ -4,7 +4,7 @@ use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::general_utils::DeviceEnum::GPU;
 use compress_utils::general_utils::{
-    trace_steps, ChimpBufferInfo, DeviceEnum, MaxGroupGnostic, Step,
+    trace_steps, ChimpBufferInfo, DecompressResult, DeviceEnum, MaxGroupGnostic, Step,
 };
 use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
@@ -14,6 +14,7 @@ use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
+use std::time::Instant;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
@@ -33,7 +34,10 @@ impl MaxGroupGnostic for DecompressorImpl {
 
 #[async_trait]
 impl Decompressor<f64> for DecompressorImpl {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f64>, DecompressionError> {
         match self {
             DecompressorImpl::GPU(d) => d.decompress(vec).await,
             DecompressorImpl::CPU(d) => d.decompress(vec).await,
@@ -61,7 +65,10 @@ impl MaxGroupGnostic for ChimpDecompressorBatched64 {
 }
 #[async_trait]
 impl Decompressor<f64> for ChimpDecompressorBatched64 {
-    async fn decompress(&self, vec: &mut Vec<u8>) -> Result<Vec<f64>, DecompressionError> {
+    async fn decompress(
+        &self,
+        vec: &mut Vec<u8>,
+    ) -> Result<DecompressResult<f64>, DecompressionError> {
         self.decompressor_factory().decompress(vec).await
     }
 }
@@ -189,10 +196,11 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
-    ) -> Result<Vec<f64>, DecompressionError> {
+    ) -> Result<DecompressResult<f64>, DecompressionError> {
         let mut current_index = 0usize;
         let mut uncompressed_values = Vec::new();
         let mut total_millis = 0;
+        let mut skip_time = 0;
         time_it!(
             {
                 let mut compressed_bytes_vec: &[u64] = bytemuck::cast_slice(compressed_bytes_vec);
@@ -255,6 +263,7 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                                 total_uncompressed_values,
                                 ChimpBufferInfo::get().buffer_size(),
                             ),
+                            &mut skip_time,
                         )
                         .await?;
 
@@ -273,7 +282,7 @@ impl Decompressor<f64> for GPUDecompressorBatched64 {
                 .map(|it: &f64| it.to_string())
                 .into_iter()
         });
-        Ok(uncompressed_values)
+        Ok(DecompressResult(uncompressed_values, skip_time))
     }
 }
 
@@ -298,6 +307,7 @@ impl GPUDecompressorBatched64 {
         compressed_value_slice: &[u64],
         input_indexes: &[u32],
         buffer_value_count: usize,
+        skip_time: &mut u128,
     ) -> Result<Vec<f64>, DecompressionError> {
         //how many buffers fit into the GPU
         let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
@@ -308,6 +318,7 @@ impl GPUDecompressorBatched64 {
         //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
         let mut result = Vec::<f64>::new();
         //info!("The wgpu workgroup size: {}", &workgroup_count);
+        let instant = Instant::now();
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(&compressed_value_slice),
@@ -334,6 +345,7 @@ impl GPUDecompressorBatched64 {
             WgpuGroupId::new(0, 0),
             Some("Storage output Buffer"),
         );
+        *skip_time += instant.elapsed().as_millis();
         let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
             let util_64 = include_str!("shaders/64_utils.wgsl");
@@ -395,6 +407,8 @@ impl GPUDecompressorBatched64 {
                 Some("decompress pass")
             );
         }
+
+        let instant = Instant::now();
         let result = wgpu_utils::get_from_gpu::<f64>(
             self.context(),
             out_storage_buffer.buffer(),
@@ -402,6 +416,7 @@ impl GPUDecompressorBatched64 {
             out_staging.buffer(),
         )
         .await?;
+        *skip_time += instant.elapsed().as_millis();
         //info!("Output result size: {}", result.len());
         Ok(result)
     }
