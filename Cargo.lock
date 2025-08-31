@@ -1134,15 +1134,32 @@ dependencies = [
  "bit-vec",
  "bytemuck",
  "compress_utils",
- "indicatif",
  "itertools",
  "log",
  "pollster",
- "serde",
  "thiserror",
  "tracing-subscriber",
  "wgpu",
  "wgpu-types",
+]
+
+[[package]]
+name = "wgpu_compress_32_n_batched"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bit-vec",
+ "bytemuck",
+ "compress_utils",
+ "itertools",
+ "log",
+ "pollster",
+ "thiserror",
+ "tracing-subscriber",
+ "wgpu",
+ "wgpu-types",
+ "wgpu_compress_32_batched",
 ]
 
 [[package]]

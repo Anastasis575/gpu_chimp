@@ -5,7 +5,7 @@ members = [
     "wgpu_compress_32_batched",
     "wgpu_compress_64_batched",
     "api"
-]
+, "wgpu_compress_32_n_batched"]
 resolver = "3"
 
 

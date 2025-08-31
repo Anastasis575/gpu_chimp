@@ -13,7 +13,7 @@ To build the project you need rust with cargo version 1.80.1
 In order to run the main tests you can use the following
 
 ```shell
-    cargo test --bin compressapi 
+    cargo test --lib wgpu_compress_32_batched 
     
     #Or a specific test with it's function name
     cargo test --bin compressapi compress_test::wgpu_compress_32

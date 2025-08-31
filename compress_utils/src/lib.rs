@@ -192,6 +192,7 @@ pub mod wgpu_utils {
     pub struct RunBuffers {
         input_buffer: BufferWrapper,
         s_buffer: BufferWrapper,
+        previous_index_buffer: BufferWrapper,
         chunks_uniform: BufferWrapper,
         compressed_buffer: BufferWrapper,
         index_buffer: BufferWrapper,
@@ -221,10 +222,14 @@ pub mod wgpu_utils {
         pub fn set_chunks(&mut self, chunks_buffer: BufferWrapper) {
             self.chunks_uniform = chunks_buffer;
         }
+        pub fn set_previous_index_buffer(&mut self, previous_index_buffer: BufferWrapper) {
+            self.previous_index_buffer = previous_index_buffer;
+        }
 
         pub fn input_buffer_mut(&mut self) -> &mut BufferWrapper {
             &mut self.input_buffer
         }
+
         pub fn input_buffer(&self) -> &BufferWrapper {
             &self.input_buffer
         }
@@ -232,6 +237,7 @@ pub mod wgpu_utils {
         pub fn s_buffer_mut(&mut self) -> &mut BufferWrapper {
             &mut self.s_buffer
         }
+
         pub fn s_buffer(&self) -> &BufferWrapper {
             &self.s_buffer
         }
@@ -239,6 +245,7 @@ pub mod wgpu_utils {
         pub fn compressed_buffer_mut(&mut self) -> &mut BufferWrapper {
             &mut self.compressed_buffer
         }
+
         pub fn compressed_buffer(&self) -> &BufferWrapper {
             &self.compressed_buffer
         }
@@ -254,6 +261,7 @@ pub mod wgpu_utils {
         pub fn byte_buffer_mut(&mut self) -> &mut BufferWrapper {
             &mut self.byte_buffer
         }
+
         pub fn byte_buffer(&self) -> &BufferWrapper {
             &self.byte_buffer
         }
@@ -261,8 +269,16 @@ pub mod wgpu_utils {
         pub fn chunks_uniform_mut(&mut self) -> &mut BufferWrapper {
             &mut self.chunks_uniform
         }
+
         pub fn chunks_uniform(&self) -> &BufferWrapper {
             &self.chunks_uniform
+        }
+
+        pub fn previous_index_buffer(&self) -> &BufferWrapper {
+            &self.previous_index_buffer
+        }
+        pub fn previous_index_buffer_mut(&mut self) -> &mut BufferWrapper {
+            &mut self.previous_index_buffer
         }
     }
 

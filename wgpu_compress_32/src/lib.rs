@@ -3,7 +3,7 @@ use bit_vec::BitVec;
 use compress_utils::bit_utils::{BitError, ToBitVec};
 use compress_utils::context::{Context, UtilError};
 use compress_utils::cpu_compress::{CompressionError, Compressor};
-use compress_utils::general_utils::{get_buffer_size, Padding};
+use compress_utils::general_utils::{get_buffer_size, CompressResult, Padding};
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::wgpu_utils::WgpuUtilsError;
 use compress_utils::{general_utils, time_it, wgpu_utils, BufferWrapper, WgpuGroupId};
@@ -225,6 +225,7 @@ impl ChimpCompressor {
                 &output_storage_buffer,
                 &output_staging_buffer,
             ],
+            Some("compress group"),
         );
         let mut s_encoder = self
             .device()
@@ -275,7 +276,10 @@ impl Default for ChimpCompressor {
 
 #[async_trait]
 impl Compressor<f32> for ChimpCompressor {
-    async fn compress(&self, initial_values: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
+    async fn compress(
+        &self,
+        initial_values: &mut Vec<f32>,
+    ) -> Result<CompressResult, CompressionError> {
         let mut padding = Padding(0);
         let buffer_size = get_buffer_size().buffer_size();
 
@@ -314,7 +318,7 @@ impl Compressor<f32> for ChimpCompressor {
             "Result collection".to_string()
         );
 
-        Ok(output_vec.to_bytes())
+        Ok(CompressResult(output_vec.to_bytes(), 0, 0))
     }
 }
 
