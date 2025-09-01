@@ -100,7 +100,7 @@ impl ComputeS for ComputeSNImpl {
         let previous_index_buffer = BufferWrapper::storage_with_size(
             self.device(),
             previous_index_size,
-            WgpuGroupId::new(0, 4),
+            WgpuGroupId::new(0, 3),
             Some("Storage S Buffer"),
         );
         let chunks_buffer = BufferWrapper::uniform_with_content(
@@ -119,6 +119,7 @@ impl ComputeS for ComputeSNImpl {
             );
 
             let n = format!("let n={}u;", self.n);
+            let full_size = format!("let full_size={}u;", ChimpBufferInfo::get().buffer_size());
 
             let temp = include_str!("shaders/compute_s.wgsl")
                 .replace(
@@ -127,6 +128,7 @@ impl ComputeS for ComputeSNImpl {
                 )
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@n", &n)
+                .replace("//@full_size", &full_size)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -169,19 +171,15 @@ impl ComputeS for ComputeSNImpl {
                 self.context(),
                 buffers.previous_index_buffer().buffer(),
                 buffers.previous_index_buffer().size() as BufferAddress,
-                s_staging_buffer.buffer(),
+                previous_index_staging.buffer(),
             )
             .await?;
             let trace_path = Step::ComputeS.get_trace_file();
             let mut trace_output = String::new();
 
             output.iter().enumerate().for_each(|(index, it)| {
-                write!(
-                    trace_output,
-                    "{},{},{}",
-                    trace_output, it, previous_index[index]
-                )
-                .unwrap()
+                let temp = format!("{},{}\n", it, previous_index[index]);
+                trace_output.push_str(&temp);
             });
 
             fs::write(&trace_path, trace_output)?;

@@ -408,7 +408,7 @@ mod tests {
 
             let mut reader = TimeSeriesReader::new(50_000, values.clone(), 500_000_000);
 
-            for size_checkpoint in (1..11).progress() {
+            for size_checkpoint in (1..11) {
                 while let Some(block) = reader.next() {
                     values.extend(block);
                     if values.len() >= (size_checkpoint * reader.max_size()) / 100 {

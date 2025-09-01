@@ -59,7 +59,7 @@ fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss,c:u32) -> Output{
 
     //case 1:  xor_value=0
     var case_1:vec2<u32>=vec2(0,c);
-    var case_1_bit_count:u32=2+logn;
+    var case_1_bit_count:u32=2+log2n;
 
 //    var leading_representation=u32(s.leading>=8&&s.leading<12)*1+u32(s.leading>=12&&s.leading<16)*2+u32(s.leading>=16&&s.leading<18)*3+u32(s.leading>=18&&s.leading<20)*4+u32(s.leading>=20&&s.leading<22)*5+u32(s.leading>=22&&s.leading<24)*6+u32(s.leading>=24)*7;
 
@@ -140,7 +140,7 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation
 
     for (var i=0u;i<chunks;i++){
         let index:u32=(workgroup_offset+workgroup_id.x) * 256 * chunks + invocation_id.x+i*256u;
-        let before_index=compare_with[index+1];
+        let before_index=comprare_with[index+1];
         out[index+1] = compress(in[index+1],s_store[index+1],in[index-before_index],s_store[index-before_index],before_index);
     }
 }

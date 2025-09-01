@@ -16,7 +16,7 @@ use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-impl Decompressor<f32> for BatchedGPUDecompressor {
+impl Decompressor<f32> for BatchedGPUNDecompressor {
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,
@@ -93,16 +93,16 @@ impl Decompressor<f32> for BatchedGPUDecompressor {
     }
 }
 
-pub struct BatchedGPUDecompressor {
+pub struct BatchedGPUNDecompressor {
     context: Arc<Context>,
     n: usize,
 }
-impl MaxGroupGnostic for BatchedGPUDecompressor {
+impl MaxGroupGnostic for BatchedGPUNDecompressor {
     fn get_max_number_of_groups(&self, _content_len: usize) -> usize {
         self.context().get_max_workgroup_size()
     }
 }
-impl Default for BatchedGPUDecompressor {
+impl Default for BatchedGPUNDecompressor {
     fn default() -> Self {
         Self {
             context: Arc::new(Context::initialize_default_adapter().block_on().unwrap()),
@@ -110,7 +110,7 @@ impl Default for BatchedGPUDecompressor {
         }
     }
 }
-impl BatchedGPUDecompressor {
+impl BatchedGPUNDecompressor {
     pub(crate) async fn decompress_block(
         &self,
         compressed_value_slice: &[u32],

@@ -2,6 +2,7 @@ use crate::calculate_indexes::{CalculateIndexes, GPUCalculateIndexes};
 use crate::compute_s_shader::{ComputeS, ComputeSNImpl};
 use crate::final_compress::{FinalCompress, FinalCompressImpl};
 use crate::finalize::{Finalize, Finalizer};
+use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{
@@ -20,20 +21,24 @@ pub struct ChimpNGPUBatched {
 }
 
 impl ChimpNGPUBatched {
-    pub(crate) fn compute_finalize_factory(&self) -> Box<dyn Finalize> {
+    pub(crate) fn compute_finalize_factory(&self) -> Box<dyn Finalize + Send + Sync> {
         Box::new(Finalizer::new(self.context.clone()))
     }
 
-    pub(crate) fn calculate_indexes_factory(&self) -> Box<dyn CalculateIndexes> {
+    pub(crate) fn calculate_indexes_factory(&self) -> Box<dyn CalculateIndexes + Send + Sync> {
         Box::new(GPUCalculateIndexes::new(self.context.clone()))
     }
 
-    pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompress> {
-        Box::new(FinalCompressImpl::new(self.context.clone(), false))
+    pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompress + Send + Sync> {
+        Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
     }
 
-    pub(crate) fn compute_s_factory(&self) -> Box<dyn ComputeS> {
+    pub(crate) fn compute_s_factory(&self) -> Box<dyn ComputeS + Send + Sync> {
         Box::new(ComputeSNImpl::new(self.context.clone(), self.n))
+        // Box::new(cpu::compute_s::CPUBatchedNComputeSImpl {
+        //     context: self.context.clone(),
+        //     n: self.n,
+        // })
     }
 
     pub(crate) fn split_by_max_gpu_buffer_size(&self, vec: &mut Vec<f32>) -> Vec<Vec<f32>> {
@@ -57,6 +62,7 @@ impl ChimpNGPUBatched {
     }
 }
 
+#[async_trait]
 impl Compressor<f32> for ChimpNGPUBatched {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         let compute_s_impl = self.compute_s_factory();

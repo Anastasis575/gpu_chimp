@@ -74,8 +74,8 @@ impl FinalCompress for FinalCompressImpl {
         }
         {
             buffers
-                .previous_index_buffer()
-                .with_binding(WgpuGroupId::new(0, 4))
+                .previous_index_buffer_mut()
+                .with_binding(WgpuGroupId::new(0, 4));
         }
         {
             buffers
@@ -93,9 +93,11 @@ impl FinalCompress for FinalCompressImpl {
                 "let last_pass={}u;",
                 if i == iterations - 1 { 1 } else { 0 }
             );
+            let log2n = format!("let log2n={}u;", self.n.ilog2());
             let temp = include_str!("shaders/chimp_compress.wgsl")
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@last_pass", &last_pass)
+                .replace("//@log2n", &log2n)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
