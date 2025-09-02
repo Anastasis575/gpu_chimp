@@ -9,6 +9,7 @@ mod cpu;
 mod decompressor;
 mod final_compress;
 mod finalize;
+mod previous_indexes;
 
 #[cfg(test)]
 mod tests {
@@ -24,9 +25,23 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
+    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn test_decompress_able() {
+        let subscriber = tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter("wgpu_compress_32_n_batched=info")
+            //     // .with_writer(
+            //     //     OpenOptions::new()
+            //     //         .create(true)
+            //     //         .truncate(true)
+            //     //         .write(true)
+            //     //         .open("run.log")
+            //     //         .unwrap(),
+            //     // )
+            .finish();
+        subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
@@ -67,7 +82,7 @@ mod tests {
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
-
+                // println!("{}", compression_time);
                 const SIZE_IN_BYTE: usize = 8;
                 let compression_ratio = (compressed_values2.compressed_value_ref().len()
                     * SIZE_IN_BYTE) as f64
@@ -76,13 +91,13 @@ mod tests {
                     "Compression ratio {} values: {compression_ratio}\n",
                     value_new.len()
                 ));
-                println!("{}", messages.last().unwrap());
+                // println!("{}", messages.last().unwrap());
                 messages.push(format!(
                     "Encoding time {} values: {}\n",
                     value_new.len(),
                     compression_time - compressed_values2.skip_time()
                 ));
-                println!("{}", messages.last().unwrap());
+                // println!("{}", messages.last().unwrap());
 
                 let time = std::time::Instant::now();
                 let decompressor = BatchedGPUNDecompressor::new(context.clone(), 64);
@@ -97,16 +112,16 @@ mod tests {
                             value_new.len(),
                             decompression_time - decompressed_values.skip_time()
                         ));
-                        println!("{}", messages.last().unwrap());
-                        fs::write(
-                            "actual.log",
-                            decompressed_values
-                                .un_compressed_value_ref()
-                                .iter()
-                                .join("\n"),
-                        )
-                        .unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        // println!("{}", messages.last().unwrap());
+                        // fs::write(
+                        //     "actual.log",
+                        //     decompressed_values
+                        //         .un_compressed_value_ref()
+                        //         .iter()
+                        //         .join("\n"),
+                        // )
+                        // .unwrap();
+                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values.0, value_new);
                     }
                     Err(err) => {
@@ -125,6 +140,7 @@ mod tests {
                 write!(fw, "{message}").unwrap()
             }
         }
+        assert!(true)
     }
 
     struct TimeSeriesReader {

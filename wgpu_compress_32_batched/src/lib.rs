@@ -194,7 +194,6 @@ mod tests {
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use compress_utils::general_utils::check_for_debug_mode;
-    use indicatif::ProgressIterator;
     use itertools::Itertools;
     use pollster::FutureExt;
     use std::cmp::min;

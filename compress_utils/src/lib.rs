@@ -180,9 +180,13 @@ impl BufferWrapper {
 pub mod wgpu_utils {
     use crate::context::Context;
     use crate::cpu_compress::CompressionError;
+    use crate::wgpu_utils::TimeError::{CouldNotFindResultEntry, CouldNotFindTimerEntry};
     use crate::BufferWrapper;
     use anyhow::Result;
     use bytemuck::Pod;
+    use std::collections::HashMap;
+    use std::fmt::{Display, Formatter};
+    use std::time::Instant;
     use thiserror::Error;
     use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Label, ShaderModule};
     use wgpu_types::PollType::Wait;
@@ -293,6 +297,62 @@ pub mod wgpu_utils {
         /// Error conversion Method
         fn from(value: WgpuUtilsError) -> Self {
             CompressionError::FromBaseAnyhowError(anyhow::Error::from(value))
+        }
+    }
+
+    #[derive(Debug, Default)]
+    pub struct TimeTracker {
+        timers: HashMap<String, Instant>,
+        results: HashMap<String, Vec<u128>>,
+    }
+
+    #[derive(Debug, Default, Error)]
+    enum TimeError {
+        #[error("There is no timer result entry with the label $0")]
+        CouldNotFindResultEntry(String),
+        #[error("There is no timer entry with the label $0")]
+        CouldNotFindTimerEntry(String),
+        #[default]
+        #[error("error")]
+        Irrelevant,
+    }
+    impl TimeTracker {
+        pub fn start(&mut self, label: impl Into<String>) {
+            let label = label.into();
+            if self.timers.contains_key(&label) {
+                self.timers.remove(&label);
+            }
+            if self.results.contains_key(&label) {
+                self.results.remove(&label);
+            }
+            self.timers.insert(label.to_string(), Instant::now());
+            self.results.insert(label.to_string(), Vec::new());
+        }
+        pub fn tick(&mut self, label: impl Into<String>) -> Result<u128, TimeError> {
+            let label = label.into();
+            let value = self
+                .timers
+                .get(&label)
+                .ok_or(CouldNotFindTimerEntry(label.to_string()))?
+                .elapsed()
+                .as_millis();
+
+            self.results
+                .get_mut(&label)
+                .ok_or(CouldNotFindResultEntry(label.to_string()))?
+                .push(value);
+
+            Ok(value)
+        }
+    }
+
+    impl Display for TimeTracker {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            for (label, results) in &self.results {
+                let text = results.last().unwrap_or(&0u128);
+                writeln!(f, "{label}:{text}").expect("Failed to write to buffer");
+            }
+            Ok(())
         }
     }
 

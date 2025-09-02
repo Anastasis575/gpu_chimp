@@ -2,11 +2,12 @@ use crate::calculate_indexes::{CalculateIndexes, GPUCalculateIndexes};
 use crate::compute_s_shader::{ComputeS, ComputeSNImpl};
 use crate::final_compress::{FinalCompress, FinalCompressImpl};
 use crate::finalize::{Finalize, Finalizer};
+use crate::previous_indexes::{PreviousIndexes, PreviousIndexesNImpl};
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{
-    add_padding_to_fit_buffer_count, ChimpBufferInfo, CompressResult, Padding,
+    ChimpBufferInfo, CompressResult, Padding, add_padding_to_fit_buffer_count,
 };
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{time_it, wgpu_utils};
@@ -21,6 +22,9 @@ pub struct ChimpNGPUBatched {
 }
 
 impl ChimpNGPUBatched {
+    pub(crate) fn previous_index_factory(&self) -> Box<dyn PreviousIndexes + Send + Sync> {
+        Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
+    }
     pub(crate) fn compute_finalize_factory(&self) -> Box<dyn Finalize + Send + Sync> {
         Box::new(Finalizer::new(self.context.clone()))
     }
@@ -69,6 +73,7 @@ impl Compressor<f32> for ChimpNGPUBatched {
         let final_compress_impl = self.compute_final_compress_factory();
         let calculate_indexes_impl = self.calculate_indexes_factory();
         let finalize_impl = self.compute_finalize_factory();
+        let previous_index_impl = self.previous_index_factory();
 
         let iterations = self.split_by_max_gpu_buffer_size(vec);
         let mut byte_stream = Vec::new();
@@ -85,6 +90,15 @@ impl Compressor<f32> for ChimpNGPUBatched {
             let mut chimp_vec: Vec<ChimpOutput>;
             // let mut indexes;
             let output_vec;
+            time_it!(
+                {
+                    previous_index_impl
+                        .calculate_previous_indexes(&mut values, &mut buffers, &mut skip_time)
+                        .await?;
+                },
+                total_millis,
+                "s computation stage"
+            );
             time_it!(
                 {
                     compute_s_impl

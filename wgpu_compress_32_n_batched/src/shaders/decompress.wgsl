@@ -63,7 +63,7 @@ fn write(input_idx:u32,output_idx:u32){
         //if current bit value==1
         if get_bit_at_index(current_info.current_index,current_info.current_offset)==1u {
             current_info=decr_counter_capped_at_32(&current_info,1u);
-            let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n);
+            let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n- 1u)+1u;
             current_info=decr_counter_capped_at_32(&current_info,log2n);
             var last_num=bitcast<u32>(out[output_index-compare_offset]);
             var lead = last_lead_array[output_index-compare_offset];
