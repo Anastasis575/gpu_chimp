@@ -1,3 +1,6 @@
+#![allow(unused_parens)]
+#![allow(unused_variables)]
+
 use crate::compute_s_shader::ComputeS;
 use async_trait::async_trait;
 use compress_utils::context::Context;

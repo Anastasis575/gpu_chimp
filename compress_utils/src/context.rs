@@ -86,7 +86,6 @@ impl Context {
                 .await
                 .map_err(|_| UtilError::Unintialized)?
         };
-        let limits = adapter.limits();
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,

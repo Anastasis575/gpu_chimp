@@ -223,8 +223,8 @@ where
         &self,
         vec: &mut Vec<u8>,
     ) -> Result<DecompressResult<f32>, DecompressionError> {
-        let mut total_millis: u128 = 0;
-        let times = std::time::Instant::now();
+        // let mut total_millis: u128 = 0;
+        // let times = std::time::Instant::now();
         // log:: //info!("Started cpu decompression stage");
         // log:: //info!("============================");
         let output = self.decompressor.decompress(vec).await?;
@@ -234,7 +234,7 @@ where
         // log:: //info!("Stage execution time: {}ms", times.elapsed().as_millis());
         // log:: //info!("Total time elapsed: {}ms", total_millis);
         // log:: //info!("============================");
-        Ok(output.into())
+        Ok(output)
     }
 }
 
@@ -255,14 +255,14 @@ where
     T: Compressor<f32> + Send + Sync,
 {
     async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
-        let mut total_millis: u128 = 0;
-        let times = std::time::Instant::now();
+        // let mut total_millis: u128 = 0;
+        // let times = std::time::Instant::now();
         // log:: //info!("Started cpu compression stage");
         // log:: //info!("============================");
         let output = self.compressor.compress(vec).await?;
         // log:: //info!("============================");
         // log:: //info!("Finished cpu compresion stage");
-        total_millis += times.elapsed().as_millis();
+        // total_millis += times.elapsed().as_millis();
         // log:: //info!("Stage execution time: {}ms", times.elapsed().as_millis());
         // log:: //info!("Total time elapsed: {}ms", total_millis);
         // log:: //info!("============================");

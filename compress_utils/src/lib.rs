@@ -37,6 +37,13 @@ pub struct WgpuGroupId {
     group: u32,
     binding: u32,
 }
+
+impl From<(i32, i32)> for WgpuGroupId {
+    fn from(value: (i32, i32)) -> Self {
+        WgpuGroupId::new(value.0 as u32, value.1 as u32)
+    }
+}
+
 impl WgpuGroupId {
     pub fn new(group: u32, binding: u32) -> Self {
         WgpuGroupId { group, binding }
@@ -64,7 +71,7 @@ impl BufferWrapper {
                 *binding = id.binding;
                 self
             }
-            BufferWrapper::UnInitialized { .. } => self,
+            UnInitialized { .. } => self,
         }
     }
 
@@ -119,7 +126,7 @@ impl BufferWrapper {
     pub fn storage_with_content(
         device: &Device,
         contents: &[u8],
-        group: WgpuGroupId,
+        wgpu_group_id: impl Into<WgpuGroupId>,
         label: Option<&str>,
     ) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -127,11 +134,12 @@ impl BufferWrapper {
             contents,
             usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
         });
+        let id = wgpu_group_id.into();
         BufferWrapper::StorageBuffer {
             buffer,
             size: size_of_val(contents) / size_of::<u8>(),
-            group: group.group,
-            binding: group.binding,
+            group: id.group,
+            binding: id.binding,
         }
     }
 
@@ -139,7 +147,7 @@ impl BufferWrapper {
     pub fn storage_with_size(
         device: &Device,
         size: BufferAddress,
-        wgpu_group_id: WgpuGroupId,
+        wgpu_group_id: impl Into<WgpuGroupId>,
         label: Option<&str>,
     ) -> Self {
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -148,18 +156,20 @@ impl BufferWrapper {
             usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let id = wgpu_group_id.into();
+
         BufferWrapper::StorageBuffer {
             buffer,
             size: size as usize,
-            group: wgpu_group_id.group,
-            binding: wgpu_group_id.binding,
+            group: id.group,
+            binding: id.binding,
         }
     }
     ///Create a uniform buffer with pre-existing content defined in the bytes of [content]  and an optional [label]
     pub fn uniform_with_content(
         device: &Device,
         contents: &[u8],
-        wgpu_group_id: WgpuGroupId,
+        wgpu_group_id: impl Into<WgpuGroupId>,
         label: Option<&str>,
     ) -> Self {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -167,11 +177,12 @@ impl BufferWrapper {
             contents,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let id = wgpu_group_id.into();
         BufferWrapper::Uniform {
             buffer,
             size: size_of_val(contents) / size_of::<u8>(),
-            group: wgpu_group_id.group,
-            binding: wgpu_group_id.binding,
+            group: id.group,
+            binding: id.binding,
         }
     }
 }
@@ -307,7 +318,7 @@ pub mod wgpu_utils {
     }
 
     #[derive(Debug, Default, Error)]
-    enum TimeError {
+    pub enum TimeError {
         #[error("There is no timer result entry with the label $0")]
         CouldNotFindResultEntry(String),
         #[error("There is no timer entry with the label $0")]
@@ -457,7 +468,7 @@ pub mod wgpu_utils {
         label: Option<&'static str>,
     ) -> BindGroup {
         let mut entries = Vec::<wgpu::BindGroupEntry>::new();
-        let mut count = 0;
+        // let mut count = 0;
         for buffer_wrap in buffers {
             match buffer_wrap {
                 BufferWrapper::StorageBuffer {
@@ -467,7 +478,7 @@ pub mod wgpu_utils {
                         binding: *binding,
                         resource: buffer.as_entire_binding(),
                     });
-                    count += 1;
+                    // count += 1;
                 }
                 BufferWrapper::StagingBuffer { .. } => {}
                 BufferWrapper::Uniform {
@@ -477,7 +488,7 @@ pub mod wgpu_utils {
                         binding: *binding,
                         resource: buffer.as_entire_binding(),
                     });
-                    count += 1;
+                    // count += 1;
                 }
                 BufferWrapper::UnInitialized => {}
             }
@@ -735,44 +746,44 @@ pub mod general_utils {
     #[macro_export]
     macro_rules! time_it {
         ($var:block,$total_millis:expr,$stage_name:expr,$logger:expr) => {
-            //info!("Starting {}",$stage_name);
-            //info!("============================");
+            info!("Starting {}",$stage_name);
+            info!("============================");
 
             let times = std::time::Instant::now();
 
             $var
 
-            //info!("============================");
-            //info!("Finished {}",$stage_name );
+            info!("============================");
+            info!("Finished {}",$stage_name );
 
             $total_millis += times.elapsed().as_millis();
 
-            //info!("Stage execution time: {}ms", times.elapsed().as_millis());
-            //info!("Total time elapsed: {}ms", $total_millis);
+            info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            info!("Total time elapsed: {}ms", $total_millis);
 
-            //info!("============================");
-            //info!("============================");
+            info!("============================");
+            info!("============================");
 
             $logger($total_millis)
         };
         ($var:block,$total_millis:expr,$stage_name:expr) => {
-            //info!("Starting {}",$stage_name);
-            //info!("============================");
+            info!("Starting {}",$stage_name);
+            info!("============================");
 
             let times = std::time::Instant::now();
 
             $var
 
-            //info!("============================");
-            //info!("Finished {}",$stage_name );
+            info!("============================");
+            info!("Finished {}",$stage_name );
 
             $total_millis += times.elapsed().as_millis();
 
-            //info!("Stage execution time: {}ms", times.elapsed().as_millis());
-            //info!("Total time elapsed: {}ms", $total_millis);
+            info!("Stage execution time: {}ms", times.elapsed().as_millis());
+            info!("Total time elapsed: {}ms", $total_millis);
 
-            //info!("============================");
-            //info!("============================");
+            info!("============================");
+            info!("============================");
 
         }
 
@@ -958,6 +969,7 @@ pub mod general_utils {
         CalculateIndexes,
         Finalize,
         Decompress,
+        PreviousIndexes,
     }
 
     #[derive(Debug)]
@@ -1003,6 +1015,13 @@ pub mod general_utils {
                         chrono::Local::now().to_utc()
                     ))
                 }
+                Step::PreviousIndexes => {
+                    fs::create_dir_all("./traces/previous_indexes/").unwrap();
+                    PathBuf::from(format!(
+                        "./traces/previous_indexes/trace_{}.log",
+                        chrono::Local::now().to_utc()
+                    ))
+                }
             }
         }
     }
@@ -1016,6 +1035,7 @@ pub mod general_utils {
                 "finalize" => Ok(Step::Finalize),
                 "decompress" => Ok(Step::Decompress),
                 "calculate_indexes" => Ok(Step::CalculateIndexes),
+                "previous_indexes" => Ok(Step::PreviousIndexes),
                 _ => Err(anyhow::anyhow!("Unknown step")),
             }
         }

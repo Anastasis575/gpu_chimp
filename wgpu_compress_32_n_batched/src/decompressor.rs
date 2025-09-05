@@ -7,6 +7,7 @@ use compress_utils::general_utils::{
 use compress_utils::{
     execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
+use log::info;
 use pollster::FutureExt;
 use std::cmp::{max, min};
 use std::fs;
@@ -14,7 +15,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use wgpu::{Device, Queue};
 use wgpu_types::BufferAddress;
-
 #[async_trait]
 impl Decompressor<f32> for BatchedGPUNDecompressor {
     async fn decompress(
@@ -166,13 +166,6 @@ impl BatchedGPUNDecompressor {
 
         let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
-            let offset_decl = format!(
-                "let workgroup_offset={}u;",
-                iteration * self.context.get_max_workgroup_size()
-            );
-            let shader_code = include_str!("shaders/decompress.wgsl")
-                .replace("//@workgroup_offset", &offset_decl);
-
             //split all the buffers to the chunks each iteration will use
             let is_last_iteration = iteration == iterator_count - 1;
             let offset = iteration * workgroup_count;
@@ -188,9 +181,9 @@ impl BatchedGPUNDecompressor {
             //     input_indexes[iteration * workgroup_count..(iteration + 1) * workgroup_count]
             //         .to_vec()
             // };
-            let out_offset = input_indexes[iteration * workgroup_count];
-            let next_out = input_indexes[next - 1];
-            let iteration_compressed_values_len = next_out - out_offset;
+            // let out_offset = input_indexes[iteration * workgroup_count];
+            // let next_out = input_indexes[next - 1];
+            // let iteration_compressed_values_len = next_out - out_offset;
 
             let size_uniform = BufferWrapper::uniform_with_content(
                 self.device(),

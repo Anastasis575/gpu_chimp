@@ -83,14 +83,14 @@ impl PreviousIndexes for PreviousIndexesNImpl {
         let input_storage_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(padded_values.as_slice()),
-            WgpuGroupId::new(0, 1),
+            (0, 1),
             Some("Storage Input Buffer"),
         );
 
         let size_uniform = BufferWrapper::uniform_with_content(
             self.context.device(),
             bytemuck::bytes_of(&ChimpBufferInfo::get().buffer_size()),
-            WgpuGroupId::new(0, 2),
+            (0, 2),
             None,
         );
         let previous_index_buffer = BufferWrapper::storage_with_size(
@@ -145,7 +145,7 @@ impl PreviousIndexes for PreviousIndexesNImpl {
         buffers.set_previous_index_buffer(previous_index_buffer);
 
         //info!("Output result size: {}", output.len());
-        if trace_steps().contains(&Step::ComputeS) {
+        if trace_steps().contains(&Step::PreviousIndexes) {
             let previous_index_staging = BufferWrapper::stage_with_size(
                 self.context().device(),
                 previous_index_size,
@@ -159,7 +159,7 @@ impl PreviousIndexes for PreviousIndexesNImpl {
                 previous_index_staging.buffer(),
             )
             .await?;
-            let trace_path = Step::ComputeS.get_trace_file();
+            let trace_path = Step::PreviousIndexes.get_trace_file();
             let mut trace_output = String::new();
 
             previous_index.iter().for_each(|it| {

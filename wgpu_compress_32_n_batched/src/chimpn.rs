@@ -1,17 +1,19 @@
 use crate::calculate_indexes::{CalculateIndexes, GPUCalculateIndexes};
 use crate::compute_s_shader::{ComputeS, ComputeSNImpl};
+use crate::cpu;
 use crate::final_compress::{FinalCompress, FinalCompressImpl};
 use crate::finalize::{Finalize, Finalizer};
-use crate::previous_indexes::{PreviousIndexes, PreviousIndexesNImpl};
+use crate::previous_indexes::PreviousIndexes;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
 use compress_utils::general_utils::{
-    ChimpBufferInfo, CompressResult, Padding, add_padding_to_fit_buffer_count,
+    add_padding_to_fit_buffer_count, ChimpBufferInfo, CompressResult, Padding,
 };
 use compress_utils::types::{ChimpOutput, S};
 use compress_utils::{time_it, wgpu_utils};
 use itertools::Itertools;
+use log::info;
 use pollster::FutureExt;
 use std::sync::Arc;
 
@@ -23,7 +25,11 @@ pub struct ChimpNGPUBatched {
 
 impl ChimpNGPUBatched {
     pub(crate) fn previous_index_factory(&self) -> Box<dyn PreviousIndexes + Send + Sync> {
-        Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
+        // Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
+        Box::new(cpu::previous_indexes::PreviousIndexesNCPUImpl {
+            context: self.context.clone(),
+            n: self.n,
+        })
     }
     pub(crate) fn compute_finalize_factory(&self) -> Box<dyn Finalize + Send + Sync> {
         Box::new(Finalizer::new(self.context.clone()))
@@ -86,8 +92,6 @@ impl Compressor<f32> for ChimpNGPUBatched {
             let mut values = iteration_values;
             values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
             let mut total_millis: u128 = 0;
-            let mut s_values: Vec<S>;
-            let mut chimp_vec: Vec<ChimpOutput>;
             // let mut indexes;
             let output_vec;
             time_it!(
@@ -97,7 +101,7 @@ impl Compressor<f32> for ChimpNGPUBatched {
                         .await?;
                 },
                 total_millis,
-                "s computation stage"
+                "calculation of the previous value to compare stage"
             );
             time_it!(
                 {

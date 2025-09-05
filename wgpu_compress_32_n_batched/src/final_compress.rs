@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use compress_utils::context::Context;
-use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
+use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step, trace_steps};
 use compress_utils::types::ChimpOutput;
 use compress_utils::wgpu_utils::RunBuffers;
-use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{BufferWrapper, WgpuGroupId, execute_compute_shader, wgpu_utils};
 use std::cmp::max;
 use std::fs;
 use std::ops::Div;
@@ -143,6 +143,7 @@ impl FinalCompress for FinalCompressImpl {
             let temp = include_str!("shaders/initialize_first_per_buffer.wgsl")
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@last_pass", &last_pass)
+                .replace("//@log2n", &log2n)
                 .to_string();
             execute_compute_shader!(
                 self.context(),

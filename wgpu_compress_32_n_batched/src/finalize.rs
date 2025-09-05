@@ -56,7 +56,6 @@ impl Finalize for Finalizer {
         padding: usize,
         skip_time: &mut u128,
     ) -> Result<CompressResult> {
-        let temp = include_str!("shaders/chimp_finalize_compress.wgsl").to_string();
         let size_of_out = size_of::<u32>();
 
         let index_len = buffers.index_buffer().size() / size_of::<u32>();

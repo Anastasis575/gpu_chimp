@@ -43,15 +43,10 @@ impl CalculateIndexes for GPUCalculateIndexes {
         size: u32,
         skip_time: &mut u128,
     ) -> Result<()> {
-        let temp = include_str!("shaders/calculate_final_sizes.wgsl").to_string();
         let workgroup_count =
             (buffers.compressed_buffer().size() / size_of::<ChimpOutput>()).div(size as usize);
         let output_buffer_size = (workgroup_count + 1) * size_of::<u32>();
-        // let out_stage_buffer = BufferWrapper::stage_with_size(
-        //     self.context().device(),
-        //     output_buffer_size as BufferAddress,
-        //     Some("Staging Output Buffer"),
-        // );
+
         let instant = Instant::now();
         let out_storage_buffer = BufferWrapper::storage_with_size(
             self.context().device(),
@@ -103,25 +98,6 @@ impl CalculateIndexes for GPUCalculateIndexes {
             );
         }
 
-        // let mut output = wgpu_utils::get_s_output::<u32>(
-        //     self.context(),
-        //     out_storage_buffer.buffer(),
-        //     output_buffer_size as BufferAddress,
-        //     out_stage_buffer.buffer(),
-        // )
-        // .await?;
-
-        // let out_stage_buffer = BufferWrapper::stage_with_size(
-        //     self.context().device(),
-        //     output_buffer_size as BufferAddress,
-        //     Some("Staging Output Buffer"),
-        // );
-        // let out_storage_buffer = BufferWrapper::storage_with_content(
-        //     self.context().device(),
-        //     bytemuck::cast_slice(&output),
-        //     WgpuGroupId::new(0, 0),
-        //     Some("Staging Output Buffer"),
-        // );
         let size_uniform = BufferWrapper::uniform_with_content(
             self.context().device(),
             bytemuck::bytes_of(&workgroup_count),
@@ -152,16 +128,7 @@ impl CalculateIndexes for GPUCalculateIndexes {
             Some("add sizes pass")
         );
         buffers.set_index_buffer(out_storage_buffer);
-        // let mut output = wgpu_utils::get_s_output::<u32>(
-        //     self.context(),
-        //     out_storage_buffer.buffer(),
-        //     output_buffer_size as BufferAddress,
-        //     out_stage_buffer.buffer(),
-        // )
-        // .await?;
-        // step!(Step::CalculateIndexes, {
-        //     output.iter().map(|it| format!("{it}")).into_iter()
-        // });
+
         Ok(())
     }
 }
