@@ -125,6 +125,7 @@ impl BatchedDecompressorCpu {
         }
         Ok(output)
     }
+    #[allow(unused)]
     pub fn decompress_impl(
         &self,
         vec: &[u8],
@@ -178,6 +179,7 @@ impl Decompressor<f32> for BatchedDecompressorCpu {
 pub struct DebugBatchDecompressorCpu {}
 #[async_trait]
 impl Decompressor<f32> for DebugBatchDecompressorCpu {
+    #[allow(unused)]
     async fn decompress(
         &self,
         compressed_bytes_vec: &mut Vec<u8>,

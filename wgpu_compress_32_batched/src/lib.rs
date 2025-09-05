@@ -1,3 +1,4 @@
+#[allow(unused)]
 mod calculate_indexes;
 mod compute_s_shader;
 pub mod cpu;
@@ -42,7 +43,7 @@ impl Finalize for FinalizerImpl {
     ) -> Result<CompressResult> {
         match self {
             FinalizerImpl::GPU(impll) => impll.finalize(run_buffers, padding, skip_time).await,
-            FinalizerImpl::CPU(impll) => Ok(CompressResult(Vec::new(), 0, 0)), //impll.finalize(chimp_output, padding, indexes).await,
+            FinalizerImpl::CPU(_) => Ok(CompressResult(Vec::new(), 0, 0)), //impll.finalize(chimp_output, padding, indexes).await,
         }
     }
 }
@@ -81,9 +82,6 @@ impl Compressor<f32> for ChimpCompressorBatched {
             let mut values = iteration_values;
             values = add_padding_to_fit_buffer_count(values, buffer_size, &mut padding);
             let mut total_millis: u128 = 0;
-            let mut s_values: Vec<S>;
-            let mut chimp_vec: Vec<ChimpOutput>;
-            // let mut indexes;
             let output_vec;
             time_it!(
                 {

@@ -13,6 +13,7 @@ use compress_utils::types::{ChimpOutput64, S};
 use compress_utils::wgpu_utils::RunBuffers;
 use compress_utils::{time_it, wgpu_utils};
 use itertools::Itertools;
+use log::info;
 use pollster::FutureExt;
 use std::ops::Div;
 use std::sync::Arc;

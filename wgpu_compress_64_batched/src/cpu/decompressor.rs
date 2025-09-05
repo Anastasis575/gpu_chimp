@@ -7,10 +7,10 @@ use compress_utils::general_utils::{trace_steps, DecompressResult};
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::{step, time_it};
 use itertools::Itertools;
+use log::info;
 use std::cmp::{max, min};
 use std::fs;
 use std::sync::Arc;
-
 pub struct CPUDecompressorBatched64 {
     context: Arc<Context>,
 }
@@ -200,6 +200,7 @@ struct CurrentInfo {
     current_offset: u32,
 }
 impl CPUDecompressWriter64 {
+    #[allow(clippy::absurd_extreme_comparisons)]
     fn write(&mut self, input_idx: u32, output_idx: u32) {
         //Index of the byte we are in
         let current_index = input_idx + 1u32;

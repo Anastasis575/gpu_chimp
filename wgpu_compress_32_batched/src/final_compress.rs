@@ -51,7 +51,6 @@ impl FinalCompress for FinalCompressImpl {
         buffers: &mut RunBuffers,
         skip_time: &mut u128,
     ) -> anyhow::Result<()> {
-        let temp = include_str!("shaders/chimp_compress.wgsl").to_string();
         let size_of_output = size_of::<ChimpOutput>();
         let input_length = buffers.input_buffer().size() / size_of::<f32>();
 

@@ -1,3 +1,4 @@
+#[allow(unused)]
 use bytemuck::Contiguous;
 use compress_utils::types::ChimpOutput;
 use std::cmp::{max, min};

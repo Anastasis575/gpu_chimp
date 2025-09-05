@@ -67,13 +67,13 @@ impl Finalize for Finalizer64 {
         let chimp_input_len = buffers.compressed_buffer().size() / size_of::<ChimpOutput64>();
         let chimp_input_length_no_padding = chimp_input_len - padding;
         let size = ChimpBufferInfo::get().buffer_size() as u32;
-        let last_size =
-            if (chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size() == 0) {
-                ChimpBufferInfo::get().buffer_size()
-            } else {
-                chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size()
-            } as u32
-                - 2;
+        let last_size = if chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size() == 0
+        {
+            ChimpBufferInfo::get().buffer_size()
+        } else {
+            chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size()
+        } as u32
+            - 2;
 
         let output_buffer_size =
             ((*indexes.last().unwrap() + 1) as usize * size_of::<u64>()) as BufferAddress;
