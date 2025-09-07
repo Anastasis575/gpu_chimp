@@ -7,9 +7,9 @@ use std::fmt::Formatter;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ChimpOutput {
-    upper_bits: u32,
-    lower_bits: u32,
-    bit_count: u32,
+    pub upper_bits: u32,
+    pub lower_bits: u32,
+    pub bit_count: u32,
 }
 
 impl Default for ChimpOutput {

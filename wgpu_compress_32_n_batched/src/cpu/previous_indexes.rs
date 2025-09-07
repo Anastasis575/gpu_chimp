@@ -75,7 +75,7 @@ impl PreviousIndexes for PreviousIndexesNCPUImpl {
         let previous_index_buffer = BufferWrapper::storage_with_content(
             self.device(),
             bytemuck::cast_slice(&writer.previous),
-            (0, 2),
+            (0, 3),
             Some("Previous Index Buffer"),
         );
 

@@ -280,12 +280,24 @@ pub fn extract_bits(input_bits: u32, start_index: u32, bit_count: u32) -> u32 {
     let mut input_bits = input_bits;
     // assert!(start_index + bit_count > 32);
     let end_index = min(start_index + bit_count, 32);
-    let low_bound = u32::MAX_VALUE << start_index;
-    let high_bound = u32::MAX_VALUE >> (32 - end_index);
+    let low_bound = if start_index >= 32 {
+        0
+    } else {
+        u32::MAX_VALUE << start_index
+    };
+    let high_bound = if end_index == 0 {
+        0
+    } else {
+        u32::MAX_VALUE >> (32 - end_index)
+    };
 
     input_bits &= low_bound;
     input_bits &= high_bound;
-    input_bits >> start_index
+    if start_index >= 32 {
+        0
+    } else {
+        input_bits >> start_index
+    }
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use crate::compute_s_shader::{ComputeS, ComputeSNImpl};
 use crate::cpu;
 use crate::final_compress::{FinalCompress, FinalCompressImpl};
 use crate::finalize::{Finalize, Finalizer};
-use crate::previous_indexes::PreviousIndexes;
+use crate::previous_indexes::{PreviousIndexes, PreviousIndexesNImpl};
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
@@ -25,11 +25,11 @@ pub struct ChimpNGPUBatched {
 
 impl ChimpNGPUBatched {
     pub(crate) fn previous_index_factory(&self) -> Box<dyn PreviousIndexes + Send + Sync> {
-        // Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
-        Box::new(cpu::previous_indexes::PreviousIndexesNCPUImpl {
-            context: self.context.clone(),
-            n: self.n,
-        })
+        Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
+        // Box::new(cpu::previous_indexes::PreviousIndexesNCPUImpl {
+        //     context: self.context.clone(),
+        //     n: self.n,
+        // })
     }
     pub(crate) fn compute_finalize_factory(&self) -> Box<dyn Finalize + Send + Sync> {
         Box::new(Finalizer::new(self.context.clone()))
@@ -40,7 +40,11 @@ impl ChimpNGPUBatched {
     }
 
     pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompress + Send + Sync> {
-        Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
+        // Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
+        Box::new(cpu::compress::CPUBatchedNCompressImpl {
+            context: self.context.clone(),
+            n: self.n,
+        })
     }
 
     pub(crate) fn compute_s_factory(&self) -> Box<dyn ComputeS + Send + Sync> {

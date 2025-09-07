@@ -51,6 +51,6 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation
     for (var i=0u;i<chunks;i++){
         let index:u32=(workgroup_offset+workgroup_id.x) * 256 * chunks + invocation_id.x+i*256u;
         let prev_id=id_to_write[index+1u];
-        s_store[index+1] = calculate_s(chunks*256,index,in[prev_id],in[index+1]);
+        s_store[index+1] = calculate_s(chunks*256,index,in[index+1u-prev_id],in[index+1]);
     }
 }

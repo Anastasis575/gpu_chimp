@@ -114,10 +114,8 @@ impl PreviousIndexes for PreviousIndexesNImpl {
 
             let full_size = format!("let full_size={}u;", ChimpBufferInfo::get().buffer_size());
 
-            let indices = format!(
-                "var<workgroup> indices:array<u32,{}>;",
-                2u32.pow(self.n.ilog2() + 1)
-            );
+            let index_size = format!("const indices_size={}u;", 2u32.pow(self.n.ilog2() + 1));
+
             let temp = include_str!("shaders/calculate_previous_efficient_index.wgsl")
                 .replace(
                     "@@workgroup_size",
@@ -125,7 +123,7 @@ impl PreviousIndexes for PreviousIndexesNImpl {
                 )
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@n", &n)
-                .replace("//@indices", &indices)
+                .replace("//@indices_size", &index_size)
                 .replace("//@full_size", &full_size)
                 .to_string();
             execute_compute_shader!(

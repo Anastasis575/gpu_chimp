@@ -141,6 +141,6 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation
     for (var i=0u;i<chunks;i++){
         let index:u32=(workgroup_offset+workgroup_id.x) * 256 * chunks + invocation_id.x+i*256u;
         let before_index=comprare_with[index+1];
-        out[index+1] = compress(in[index+1],s_store[index+1],in[index-before_index],s_store[index-before_index],before_index);
+        out[index+1] = compress(in[index+1],s_store[index+1],in[index+1u-before_index],s_store[index+1u-before_index],max(1,before_index));
     }
 }
