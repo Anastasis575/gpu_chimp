@@ -51,14 +51,14 @@ fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss,c:u32) -> Output{
     var v_u32=bitcast<u32>(v);
     var xorred:u32= v_prev_u32^v_u32;
 
-    var center_bits=u32(32-s.leading-s.trailing);
+    var center_bits=s.equal*32 + (1-s.equal)*u32(32-s.leading-s.trailing);
 
     //Output
     var content:vec2<u32>=vec2(0,0);
     var bit_count:u32=0;
 
     //case 1:  xor_value=0
-    var case_1:vec2<u32>=vec2(0,c- 1u);
+    var case_1:vec2<u32>=vec2(0,c);
     var case_1_bit_count:u32=2;
 
 //    var leading_representation=u32(s.leading>=8&&s.leading<12)*1+u32(s.leading>=12&&s.leading<16)*2+u32(s.leading>=16&&s.leading<18)*3+u32(s.leading>=18&&s.leading<20)*4+u32(s.leading>=20&&s.leading<22)*5+u32(s.leading>=22&&s.leading<24)*6+u32(s.leading>=24)*7;
@@ -66,8 +66,8 @@ fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss,c:u32) -> Output{
 
     // case 2: tail>6 && xor_value!=0(!equal)
     var case_2:vec2<u32>=vec2(0u,1u);//code:01 bit_count=2
-    case_2=pseudo_u64_shift(case_2,log2n- 1u);
-    case_2.y+=extractBits(c- 1u,0u,log2n- 1u);
+    case_2=pseudo_u64_shift(case_2,log2n);
+    case_2.y+=extractBits(c,0u,log2n);
     case_2=pseudo_u64_shift(case_2,5u);
     case_2.y+=extractBits(u32(s.leading),0u,5u);
     case_2=pseudo_u64_shift(case_2,5u);
@@ -78,16 +78,16 @@ fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss,c:u32) -> Output{
 
     // case 3: tail<=6 and lead=pr_lead
     var case_3:vec2<u32>=vec2(0,2u); // code 10
-    case_3=pseudo_u64_shift(case_3,log2n- 1u);
-    case_3.y+=extractBits(c- 1u,0u,log2n- 1u);
+    case_3=pseudo_u64_shift(case_3,log2n);
+    case_3.y+=extractBits(c,0u,log2n);
     case_3=pseudo_u64_shift(case_3,u32(32 - s.leading));
     case_3.y+=extractBits(xorred,0u,u32(32 - s.leading));
     var case_3_bit_count:u32=2+32-u32(s.leading);
 
     // case 4: tail<=6 and lead!=pr_lead
     var case_4:vec2<u32>=vec2(0,3u);// code 11
-    case_4=pseudo_u64_shift(case_4,log2n- 1u);
-    case_4.y+=extractBits(c- 1u,0u,log2n- 1u);
+    case_4=pseudo_u64_shift(case_4,log2n);
+    case_4.y+=extractBits(c,0u,log2n);
     case_4=pseudo_u64_shift(case_4,5u);
     case_4.y+=extractBits(u32(s.leading),0u,5u);
     case_4=pseudo_u64_shift(case_4,u32(32 - s.leading));
@@ -100,7 +100,7 @@ fn compress(v:f32,s:Ss,v_prev:f32,s_prev:Ss,c:u32) -> Output{
     final_output_i32+=vec_condition(trail_le_6*pr_lead_ne_lead)*case_4;
     var final_output=vec2(u32(final_output_i32.x),u32(final_output_i32.y));
 
-    var final_bit_count=log2n- 1u+s.equal*case_1_bit_count+ (trail_gt_6*not_equal)*case_2_bit_count +(trail_le_6*pr_lead_eq_lead)*case_3_bit_count +(trail_le_6*pr_lead_ne_lead)*case_4_bit_count;
+    var final_bit_count=log2n+s.equal*case_1_bit_count+ (trail_gt_6*not_equal)*case_2_bit_count +(trail_le_6*pr_lead_eq_lead)*case_3_bit_count +(trail_le_6*pr_lead_ne_lead)*case_4_bit_count;
     return Output(final_output.x,final_output.y,u32(final_bit_count));
 }
 

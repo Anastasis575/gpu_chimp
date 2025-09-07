@@ -80,15 +80,15 @@ impl CPUBatchedNCompressImpl {
         };
 
         //case 1:  xor_value=0
-        let mut case_1: vec2<u32> = vec2(0, (c - 1) as u32);
+        let mut case_1: vec2<u32> = vec2(0, (c) as u32);
         let mut case_1_bit_count: u32 = 2;
 
         //    let mut head_representation=(s.head>=8&&s.head<12)*1+u32(s.head>=12&&s.head<16)*2+u32(s.head>=16&&s.head<18)*3+u32(s.head>=18&&s.head<20)*4+u32(s.head>=20&&s.head<22)*5+u32(s.head>=22&&s.head<24)*6+u32(s.head>=24) as u32*7;
 
         // case 2: tail>6 && xor_value!=0(!equal)
         let mut case_2: vec2<u32> = vec2(0u32, 1u32); //code:01 bit_count=2
-        case_2 = self.pseudo_u64_shift(case_2, log2n - 1u32);
-        case_2.1 += extract_bits(c as u32 - 1u32, 0u32, log2n - 1u32);
+        case_2 = self.pseudo_u64_shift(case_2, log2n);
+        case_2.1 += extract_bits(c as u32, 0u32, log2n);
         case_2 = self.pseudo_u64_shift(case_2, 5u32);
         case_2.1 += extract_bits((s.head) as u32, 0u32, 5u32) as u32;
         case_2 = self.pseudo_u64_shift(case_2, 5u32);
@@ -99,16 +99,16 @@ impl CPUBatchedNCompressImpl {
 
         // case 3: tail<=6 and lead=pr_lead
         let mut case_3: vec2<u32> = vec2(0, 2u32); // code 10
-        case_3 = self.pseudo_u64_shift(case_3, log2n - 1u32);
-        case_3.1 += extract_bits(c as u32 - 1u32, 0u32, log2n - 1u32);
+        case_3 = self.pseudo_u64_shift(case_3, log2n);
+        case_3.1 += extract_bits(c as u32, 0u32, log2n);
         case_3 = self.pseudo_u64_shift(case_3, (32 - s.head) as u32);
         case_3.1 += extract_bits(xorred, 0u32, (32 - s.head) as u32);
         let mut case_3_bit_count: u32 = 2 + 32 - (s.head) as u32;
 
         // case 4: tail<=6 and lead!=pr_lead
         let mut case_4: vec2<u32> = vec2(0, 3u32); // code 11
-        case_4 = self.pseudo_u64_shift(case_4, log2n - 1u32);
-        case_4.1 += extract_bits(c as u32 - 1u32, 0u32, log2n - 1u32);
+        case_4 = self.pseudo_u64_shift(case_4, log2n);
+        case_4.1 += extract_bits(c as u32, 0u32, log2n);
         case_4 = self.pseudo_u64_shift(case_4, 5u32);
         case_4.1 += extract_bits((s.head) as u32, 0u32, 5u32);
         case_4 = self.pseudo_u64_shift(case_4, (32 - s.head) as u32);
@@ -121,7 +121,7 @@ impl CPUBatchedNCompressImpl {
         final_output_i32 += vec_condition(trail_le_6 * pr_lead_ne_lead) * case_4;
         let mut final_output = vec2((final_output_i32.0), (final_output_i32.1));
 
-        let mut final_bit_count = log2n - 1u32
+        let mut final_bit_count = log2n
             + s.equal * case_1_bit_count
             + (trail_gt_6 * not_equal) * case_2_bit_count
             + (trail_le_6 * pr_lead_eq_lead) * case_3_bit_count

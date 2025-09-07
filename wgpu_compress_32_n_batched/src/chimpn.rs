@@ -40,11 +40,11 @@ impl ChimpNGPUBatched {
     }
 
     pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompress + Send + Sync> {
-        // Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
-        Box::new(cpu::compress::CPUBatchedNCompressImpl {
-            context: self.context.clone(),
-            n: self.n,
-        })
+        Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
+        // Box::new(cpu::compress::CPUBatchedNCompressImpl {
+        //     context: self.context.clone(),
+        //     n: self.n,
+        // })
     }
 
     pub(crate) fn compute_s_factory(&self) -> Box<dyn ComputeS + Send + Sync> {

@@ -10,7 +10,7 @@ mod previous_indexes;
 #[cfg(test)]
 mod tests {
     use crate::chimpn::ChimpNGPUBatched;
-    use crate::cpu::decompressor::BatchedCPUNDecompressor;
+    use crate::decompressor::BatchedGPUNDecompressor;
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
     use itertools::Itertools;
@@ -21,23 +21,22 @@ mod tests {
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
-    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn test_decompress_able() {
-        let subscriber = tracing_subscriber::fmt()
-            .compact()
-            .with_env_filter("wgpu_compress_32_n_batched=info")
-            //     // .with_writer(
-            //     //     OpenOptions::new()
-            //     //         .create(true)
-            //     //         .truncate(true)
-            //     //         .write(true)
-            //     //         .open("run.log")
-            //     //         .unwrap(),
-            //     // )
-            .finish();
-        subscriber.init();
+        // let subscriber = tracing_subscriber::fmt()
+        //     .compact()
+        //     .with_env_filter("wgpu_compress_32_n_batched=info")
+        //     //     // .with_writer(
+        //     //     //     OpenOptions::new()
+        //     //     //         .create(true)
+        //     //     //         .truncate(true)
+        //     //     //         .write(true)
+        //     //     //         .open("run.log")
+        //     //     //         .unwrap(),
+        //     //     // )
+        //     .finish();
+        // subscriber.init();
         let context = Arc::new(
             Context::initialize_with_adapter("NVIDIA".to_string())
                 .block_on()
@@ -71,10 +70,10 @@ mod tests {
                         break;
                     }
                 }
-                let mut value_new = values[0..2048].to_vec();
+                let mut value_new = values.to_vec();
                 println!("Starting compression of {} values", values.len());
                 let time = std::time::Instant::now();
-                let compressor = ChimpNGPUBatched::new(context.clone(), 128);
+                let compressor = ChimpNGPUBatched::new(context.clone(), 32);
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
@@ -93,11 +92,11 @@ mod tests {
                     value_new.len(),
                     compression_time - compressed_values2.skip_time()
                 ));
-                println!("{}", compression_time - compressed_values2.skip_time());
+                // println!("{}", compression_time - compressed_values2.skip_time());
                 // println!("{}", messages.last().unwrap());
 
                 let time = std::time::Instant::now();
-                let decompressor = BatchedCPUNDecompressor::new(context.clone(), 128);
+                let decompressor = BatchedGPUNDecompressor::new(context.clone(), 32);
                 match decompressor
                     .decompress(compressed_values2.compressed_value_mut())
                     .block_on()
@@ -110,15 +109,15 @@ mod tests {
                             decompression_time - decompressed_values.skip_time()
                         ));
                         // println!("{}", messages.last().unwrap());
-                        fs::write(
-                            "actual.log",
-                            decompressed_values
-                                .un_compressed_value_ref()
-                                .iter()
-                                .join("\n"),
-                        )
-                        .unwrap();
-                        fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                        // fs::write(
+                        //     "actual.log",
+                        //     decompressed_values
+                        //         .un_compressed_value_ref()
+                        //         .iter()
+                        //         .join("\n"),
+                        // )
+                        // .unwrap();
+                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values.0, value_new);
                     }
                     Err(err) => {

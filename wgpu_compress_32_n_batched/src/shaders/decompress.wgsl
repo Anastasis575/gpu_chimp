@@ -63,17 +63,18 @@ fn write(input_idx:u32,output_idx:u32){
         //if current bit value==1
         if get_bit_at_index(current_info.current_index,current_info.current_offset)==1u {
             current_info=decr_counter_capped_at_32(&current_info,1u);
-            let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n- 1u)+1u;
+            let recalc_lead=get_bit_at_index(current_info.current_index,current_info.current_offset)==1;
+            current_info=decr_counter_capped_at_32(&current_info,1u);
+            
+            let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n);
             current_info=decr_counter_capped_at_32(&current_info,log2n);
+            
             var last_num=bitcast<u32>(out[output_index-compare_offset]);
             var lead = last_lead_array[output_index-compare_offset];
-            if  get_bit_at_index(current_info.current_index,current_info.current_offset)==1 {
-                current_info=decr_counter_capped_at_32(&current_info,1u);
+            if  recalc_lead {
                 lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
                 current_info=decr_counter_capped_at_32(&current_info,5u);
-            } else {
-                current_info=decr_counter_capped_at_32(&current_info,1u);
-            }
+            } 
             significant_bits = 32u - lead;
             if significant_bits == 0u {
                 significant_bits = 32u;
@@ -88,10 +89,13 @@ fn write(input_idx:u32,output_idx:u32){
             output_index+=1u;
         } else if  get_bit_at_index(current_info.current_index,current_info.current_offset - 1u)==1u{
             current_info=decr_counter_capped_at_32(&current_info,2u);
+            
             let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n);
             current_info=decr_counter_capped_at_32(&current_info,log2n);
+            
             var last_num=bitcast<u32>(out[output_index-compare_offset]);
-            //var lead = last_lead[output_index-compare_offset];
+            
+            
             let lead = reinterpret_num(current_info.current_index,current_info.current_offset, 5u);
             current_info=decr_counter_capped_at_32(&current_info,5u);
             
@@ -117,15 +121,17 @@ fn write(input_idx:u32,output_idx:u32){
             output_index+=1u;
 
         } else {
+            current_info=decr_counter_capped_at_32(&current_info,2u);
+            
             let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n);
             current_info=decr_counter_capped_at_32(&current_info,log2n);
+            
             var last_num=bitcast<u32>(out[output_index-compare_offset]);
             var lead = last_lead_array[output_index-compare_offset];
+            last_lead_array[output_index] = 32u;
             out[output_index]=bitcast<f32>(last_num);
             output_index+=1u;
 
-            last_lead_array[output_index] = 32u;
-            current_info=decr_counter_capped_at_32(&current_info,2u);
         }
     }
 }

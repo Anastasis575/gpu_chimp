@@ -263,7 +263,7 @@ pub struct CPUDecompressorNWriter {
 impl CPUDecompressorNWriter {
     pub fn write(&mut self, input_idx: usize, output_idx: usize) {
         let n = self.n;
-        let log2n = self.n.ilog2() - 1;
+        let log2n = self.n.ilog2();
 
         //Index of the byte we are in
         let mut current_index = input_idx + 1usize;
@@ -306,8 +306,7 @@ impl CPUDecompressorNWriter {
                     current_info.current_index,
                     current_info.current_offset,
                     log2n,
-                ) as usize
-                    + 1usize;
+                ) as usize;
                 current_info = self.decr_counter_capped_at_32(current_info, log2n);
                 let mut last_num = bytemuck::cast(self.output[output_index - compare_offset]);
                 let mut lead = self.last_lead_array[output_index - compare_offset];
@@ -346,11 +345,10 @@ impl CPUDecompressorNWriter {
                     current_info.current_index,
                     current_info.current_offset,
                     log2n,
-                ) as usize
-                    + 1usize;
+                ) as usize;
                 current_info = self.decr_counter_capped_at_32(current_info, log2n);
                 let mut last_num = bytemuck::cast(self.output[output_index - compare_offset]);
-                //let mut lead = last_lead[output_index-compare_offset];
+
                 let lead = self.reinterpret_num(
                     current_info.current_index,
                     current_info.current_offset,
@@ -393,8 +391,7 @@ impl CPUDecompressorNWriter {
                     current_info.current_index,
                     current_info.current_offset,
                     log2n,
-                ) as usize
-                    + 1usize;
+                ) as usize;
                 current_info = self.decr_counter_capped_at_32(current_info, log2n);
                 let mut last_num: u32 = bytemuck::cast(self.output[output_index - compare_offset]);
                 let mut lead = self.last_lead_array[output_index - compare_offset];
