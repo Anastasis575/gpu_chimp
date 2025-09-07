@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
+use compress_utils::general_utils::CompressResult;
 use wgpu_compress_32_batched::ChimpCompressorBatched;
 
 pub enum ChimpCompressor32 {
@@ -10,7 +11,7 @@ pub enum ChimpCompressor32 {
 
 #[async_trait]
 impl Compressor<f32> for ChimpCompressor32 {
-    async fn compress(&self, vec: &mut Vec<f32>) -> Result<Vec<u8>, CompressionError> {
+    async fn compress(&self, vec: &mut Vec<f32>) -> Result<CompressResult, CompressionError> {
         match self {
             // ChimpCompressor32::CPUCompressor32(compressor) => compressor(vec).await,
             // ChimpCompressor32::GPUCompressor32(compressor) => compressor(vec).await,
