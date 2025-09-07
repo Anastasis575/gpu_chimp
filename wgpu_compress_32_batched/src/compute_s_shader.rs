@@ -151,9 +151,10 @@ impl ComputeS for ComputeSImpl {
             let trace_path = Step::ComputeS.get_trace_file();
             let mut trace_output = String::new();
 
-            output
-                .iter()
-                .for_each(|it| trace_output.push_str(it.to_string().as_str()));
+            output.iter().for_each(|it| {
+                trace_output.push_str(it.to_string().as_str());
+                trace_output.push_str("\n");
+            });
 
             fs::write(&trace_path, trace_output)?;
         }
