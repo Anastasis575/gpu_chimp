@@ -3,7 +3,7 @@ use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
 use compress_utils::types::ChimpOutput64;
 use compress_utils::wgpu_utils::RunBuffers;
-use compress_utils::{execute_compute_shader, step, wgpu_utils, BufferWrapper, WgpuGroupId};
+use compress_utils::{execute_compute_shader, wgpu_utils, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use std::cmp::max;
 use std::fs;
@@ -13,7 +13,7 @@ use std::time::Instant;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
-pub trait FinalCompress: MaxGroupGnostic {
+pub trait FinalCompressN64: MaxGroupGnostic {
     async fn final_compress(
         &self,
         buffers: &mut RunBuffers,
@@ -21,17 +21,14 @@ pub trait FinalCompress: MaxGroupGnostic {
     ) -> anyhow::Result<()>;
 }
 
-pub struct FinalCompressImpl64 {
+pub struct FinalCompressImplN64 {
     context: Arc<Context>,
-    // debug: bool,
+    n: usize,
 }
 
-impl FinalCompressImpl64 {
-    pub fn new(context: Arc<Context>, _debug: bool) -> Self {
-        Self {
-            context,
-            // debug
-        }
+impl FinalCompressImplN64 {
+    pub fn new(context: Arc<Context>, n: usize) -> Self {
+        Self { context, n }
     }
 
     pub fn context(&self) -> &Context {
@@ -39,14 +36,14 @@ impl FinalCompressImpl64 {
     }
 }
 
-impl MaxGroupGnostic for FinalCompressImpl64 {
+impl MaxGroupGnostic for FinalCompressImplN64 {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {
         content_len.div(ChimpBufferInfo::get().buffer_size())
     }
 }
 
 #[async_trait]
-impl FinalCompress for FinalCompressImpl64 {
+impl FinalCompressN64 for FinalCompressImplN64 {
     async fn final_compress(
         &self,
         buffers: &mut RunBuffers,
@@ -81,6 +78,11 @@ impl FinalCompress for FinalCompressImpl64 {
         }
         {
             buffers
+                .previous_index_buffer_mut()
+                .with_binding(WgpuGroupId::new(0, 4));
+        }
+        {
+            buffers
                 .chunks_uniform_mut()
                 .with_binding(WgpuGroupId::new(0, 3));
         }
@@ -96,10 +98,12 @@ impl FinalCompress for FinalCompressImpl64 {
                 if i == iterations - 1 { 1 } else { 0 }
             );
             let utils_64 = include_str!("shaders/64_utils.wgsl");
+            let log2n = format!("let log2n={}u;", self.n.ilog2());
             let temp = include_str!("shaders/chimp_compress.wgsl")
                 .replace("//#include(64_utils)", utils_64)
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@last_pass", &last_pass)
+                .replace("//@log2n", &log2n)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -107,6 +111,7 @@ impl FinalCompress for FinalCompressImpl64 {
                 vec![
                     buffers.s_buffer(),
                     buffers.input_buffer(),
+                    buffers.previous_index_buffer(),
                     &output_storage_buffer,
                     buffers.chunks_uniform(),
                 ],
@@ -124,6 +129,7 @@ impl FinalCompress for FinalCompressImpl64 {
                 .chunks_uniform_mut()
                 .with_binding(WgpuGroupId::new(0, 2));
         }
+
         {
             buffers
                 .input_buffer_mut()
@@ -142,11 +148,13 @@ impl FinalCompress for FinalCompressImpl64 {
                 "let last_pass={}u;",
                 if i == iterations - 1 { 1 } else { 0 }
             );
+            let log2n = format!("let log2n={}u;", self.n.ilog2());
             execute_compute_shader!(
                 self.context(),
                 &initialize_shadder
                     .replace("//@workgroup_offset", &offset_decl)
-                    .replace("//#include(64_utils)", utils_64),
+                    .replace("//#include(64_utils)", utils_64)
+                    .replace("//@log2n", &log2n),
                 vec![
                     output_storage_buffer.with_binding(WgpuGroupId::new(0, 0)),
                     buffers.input_buffer(),
@@ -161,27 +169,29 @@ impl FinalCompress for FinalCompressImpl64 {
             );
         }
         buffers.set_compressed_buffer(output_storage_buffer);
-        let mut final_output;
-
-        step!(Step::Compress, {
-            let output_staging = BufferWrapper::stage_with_size(
+        if trace_steps().contains(&Step::Compress) {
+            let output_staging_buffer = BufferWrapper::stage_with_size(
                 self.context().device(),
                 buffers.compressed_buffer().size() as BufferAddress,
                 None,
             );
-            final_output = wgpu_utils::get_from_gpu::<ChimpOutput64>(
+            let output = wgpu_utils::get_from_gpu::<ChimpOutput64>(
                 self.context(),
                 buffers.compressed_buffer().buffer(),
                 buffers.compressed_buffer().size() as BufferAddress,
-                output_staging.buffer(),
+                output_staging_buffer.buffer(),
             )
             .await?;
-            final_output
-                .iter()
-                .enumerate()
-                .map(|it| format!("{}:{}\n", it.0, it.1))
-                .into_iter()
-        });
+
+            let trace_path = Step::Compress.get_trace_file();
+            let mut trace_output = String::new();
+
+            output.iter().enumerate().for_each(|it| {
+                trace_output.push_str(&format!("{}:{}\n", it.0, it.1));
+            });
+
+            fs::write(&trace_path, trace_output)?;
+        }
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
-use crate::previous_indexes::PreviousIndexes;
+use crate::previous_indexes::PreviousIndexesN64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::{trace_steps, ChimpBufferInfo, MaxGroupGnostic, Step};
@@ -32,7 +32,7 @@ impl MaxGroupGnostic for PreviousIndexesNCPUImpl {
     }
 }
 #[async_trait]
-impl PreviousIndexes for PreviousIndexesNCPUImpl {
+impl PreviousIndexesN64 for PreviousIndexesNCPUImpl {
     async fn calculate_previous_indexes(
         &self,
         values: &mut [f64],
@@ -105,16 +105,16 @@ impl PreviousWriter {
     pub fn execute(&mut self, workgroup_start: usize, size: usize) {
         let mut indices = vec![0u32; 2usize.pow(self.n.ilog2() + 1)];
         let log2n = self.n.ilog2();
-        let threshold = 2u32.pow(log2n + 1) - 1;
-        let set_lsb: u32 = bytemuck::cast(threshold);
+        let threshold = 2u64.pow(log2n + 1) - 1;
+        let set_lsb: u64 = bytemuck::cast(threshold);
         let mut previous_index = 1usize;
-        let threshold = 5u32 + (log2n);
+        let threshold = 6u32 + (log2n);
         for step in 1usize + workgroup_start..size + workgroup_start {
-            let value: u32 = bytemuck::cast(self.input[step]);
+            let value: u64 = bytemuck::cast(self.input[step]);
             let mut key = (value & set_lsb) as usize;
             let curr_index: usize = indices[key] as usize;
             if curr_index > 0 && (step - curr_index) < self.n as usize {
-                let tempXor = value ^ bytemuck::cast::<f64, u32>(self.input[curr_index]);
+                let tempXor = value ^ bytemuck::cast::<f64, u64>(self.input[curr_index]);
                 let trailingZeros = tempXor.trailing_zeros();
 
                 if trailingZeros > threshold {

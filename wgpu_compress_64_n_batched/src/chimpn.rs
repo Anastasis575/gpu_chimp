@@ -1,11 +1,9 @@
-use crate::calculate_indexes::{
-    CalculateIndexes, CalculateIndexesN64, GPUCalculateIndexes, GPUNCalculateIndexes64,
-};
-use crate::compute_s_shader::{ComputeS, ComputeSNImpl};
+use crate::calculate_indexes::{CalculateIndexesN64, GPUNCalculateIndexes64};
+use crate::compute_s_shader::{ComputeS, ComputeSN64Impl};
 use crate::cpu;
-use crate::final_compress::{FinalCompress, FinalCompressImpl};
-use crate::finalize::{Finalize, FinalizeN64, Finalizer, FinalizerN64};
-use crate::previous_indexes::{PreviousIndexes, PreviousIndexesNImpl};
+use crate::final_compress::{FinalCompressImplN64, FinalCompressN64};
+use crate::finalize::{FinalizeN64, FinalizerN64};
+use crate::previous_indexes::{PreviousIndexesN64, PreviousIndexesN64Impl};
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{CompressionError, Compressor};
@@ -27,8 +25,8 @@ pub struct ChimpN64GPUBatched {
 }
 
 impl ChimpN64GPUBatched {
-    pub(crate) fn previous_index_factory(&self) -> Box<dyn PreviousIndexes + Send + Sync> {
-        Box::new(PreviousIndexesNImpl::new(self.context.clone(), self.n))
+    pub(crate) fn previous_index_factory(&self) -> Box<dyn PreviousIndexesN64 + Send + Sync> {
+        Box::new(PreviousIndexesN64Impl::new(self.context.clone(), self.n))
         // Box::new(cpu::previous_indexes::PreviousIndexesNCPUImpl {
         //     context: self.context.clone(),
         //     n: self.n,
@@ -42,8 +40,8 @@ impl ChimpN64GPUBatched {
         Box::new(GPUNCalculateIndexes64::new(self.context.clone()))
     }
 
-    pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompress + Send + Sync> {
-        Box::new(FinalCompressImpl::new(self.context.clone(), self.n))
+    pub(crate) fn compute_final_compress_factory(&self) -> Box<dyn FinalCompressN64 + Send + Sync> {
+        Box::new(FinalCompressImplN64::new(self.context.clone(), self.n))
         // Box::new(cpu::compress::CPUBatchedNCompressImpl {
         //     context: self.context.clone(),
         //     n: self.n,
@@ -51,7 +49,7 @@ impl ChimpN64GPUBatched {
     }
 
     pub(crate) fn compute_s_factory(&self) -> Box<dyn ComputeS + Send + Sync> {
-        Box::new(ComputeSNImpl::new(self.context.clone(), self.n))
+        Box::new(ComputeSN64Impl::new(self.context.clone(), self.n))
         // Box::new(cpu::compute_s::CPUBatchedNComputeSImpl {
         //     context: self.context.clone(),
         //     n: self.n,

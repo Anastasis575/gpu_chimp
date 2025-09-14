@@ -5,12 +5,12 @@ members = [
     "wgpu_compress_32_batched",
     "wgpu_compress_64_batched",
     "api"
-, "wgpu_compress_32_n_batched", "wgpu_compress_64_n_batched"]
+    , "wgpu_compress_32_n_batched", "wgpu_compress_64_n_batched"]
 resolver = "3"
 
 
 [workspace.dependencies]
-wgpu = { version = "26.0.1", default-features = false, features = [
+wgpu = { version = "26.0.0", default-features = false, features = [
     "wgsl",
     "glsl",
     "vulkan",

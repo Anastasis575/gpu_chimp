@@ -4,49 +4,22 @@
 #![allow(unused_mut)]
 #![allow(unused_mut)]
 
-use crate::final_compress::FinalCompress;
+use crate::final_compress::FinalCompressN64;
 use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::general_utils::trace_steps;
 use compress_utils::general_utils::{ChimpBufferInfo, MaxGroupGnostic, Step};
-use compress_utils::types::{ChimpOutput, S};
+use compress_utils::types::{ChimpOutput64, S};
 use compress_utils::wgpu_utils::{get_from_gpu, RunBuffers};
 use compress_utils::{step, BufferWrapper, WgpuGroupId};
 use itertools::Itertools;
 use std::cmp::max;
 use std::fs;
-use std::ops::{AddAssign, Div, Mul};
+use std::ops::Div;
 use std::sync::Arc;
-use wgpu_compress_32_batched::cpu::finalize::extract_bits;
+use wgpu_compress_64_batched::cpu::utils_64;
+use wgpu_compress_64_batched::cpu::utils_64::{pseudo_u64_shift, vec2, vec_condition};
 use wgpu_types::BufferAddress;
-
-pub struct vec2<T>(pub(crate) T, pub(crate) T);
-
-pub fn vec_condition(condition: u32) -> vec2<u32> {
-    vec2(condition, condition)
-}
-
-impl Mul<vec2<u32>> for vec2<u32> {
-    type Output = vec2<u32>;
-
-    fn mul(self, rhs: vec2<u32>) -> Self::Output {
-        vec2(self.0 * rhs.0, self.1 * rhs.1)
-    }
-}
-impl Mul<u32> for vec2<u32> {
-    type Output = vec2<u32>;
-
-    fn mul(self, rhs: u32) -> Self::Output {
-        vec2(self.0 * (rhs as u32), self.1 * (rhs as u32))
-    }
-}
-
-impl AddAssign<vec2<u32>> for vec2<u32> {
-    fn add_assign(&mut self, rhs: vec2<u32>) {
-        self.0 += rhs.0;
-        self.1 += rhs.1;
-    }
-}
 
 pub struct CPUBatchedNCompressImpl {
     pub(crate) context: Arc<Context>,
@@ -54,7 +27,7 @@ pub struct CPUBatchedNCompressImpl {
 }
 
 impl CPUBatchedNCompressImpl {
-    pub(crate) fn compress(&self, s: S, v: f64, s_prev: S, v_prev: f64, c: usize) -> ChimpOutput {
+    pub fn compress(&self, s: S, v: f64, s_prev: S, v_prev: f64, c: usize) -> ChimpOutput64 {
         let log2n = self.n.ilog2();
         //Conditions
         let mut trail_gt_6 = (s.tail > 6) as u32;
@@ -69,56 +42,56 @@ impl CPUBatchedNCompressImpl {
         let mut first_bit_one: u32 = 0x80000000;
 
         //input
-        let mut v_prev_u32: u32 = bytemuck::cast(v_prev);
-        let mut v_u32: u32 = bytemuck::cast(v);
-        let mut xorred: u32 = v_prev_u32 ^ v_u32;
+        let mut v_prev_u32: u64 = bytemuck::cast(v_prev);
+        let mut v_u32: u64 = bytemuck::cast(v);
+        let mut xorred: u64 = v_prev_u32 ^ v_u32;
 
         let mut center_bits = if (s.equal != 1) {
-            (32 - s.head - s.tail) as u32
+            (64 - s.head - s.tail) as u32
         } else {
-            32
+            64
         };
 
         //case 1:  xor_value=0
-        let mut case_1: vec2<u32> = vec2(0, (c) as u32);
+        let mut case_1: vec2<u64> = vec2::<u64>(0, c as u64);
         let mut case_1_bit_count: u32 = 2;
 
         //    let mut head_representation=(s.head>=8&&s.head<12)*1+u32(s.head>=12&&s.head<16)*2+u32(s.head>=16&&s.head<18)*3+u32(s.head>=18&&s.head<20)*4+u32(s.head>=20&&s.head<22)*5+u32(s.head>=22&&s.head<24)*6+u32(s.head>=24) as u32*7;
 
         // case 2: tail>6 && xor_value!=0(!equal)
-        let mut case_2: vec2<u32> = vec2(0u32, 1u32); //code:01 bit_count=2
-        case_2 = self.pseudo_u64_shift(case_2, log2n);
-        case_2.1 += extract_bits(c as u32, 0u32, log2n);
-        case_2 = self.pseudo_u64_shift(case_2, 5u32);
-        case_2.1 += extract_bits((s.head) as u32, 0u32, 5u32) as u32;
-        case_2 = self.pseudo_u64_shift(case_2, 5u32);
-        case_2.1 += extract_bits(center_bits, 0u32, 5u32);
-        case_2 = self.pseudo_u64_shift(case_2, center_bits);
-        case_2.1 += extract_bits(xorred, (s.tail) as u32, center_bits);
-        let mut case_2_bit_count = 2 + 5 + 5 + center_bits;
+        let mut case_2: vec2<u64> = vec2::<u64>(0u64, 1u64); //code:01 bit_count=2
+        case_2 = pseudo_u64_shift(case_2, log2n);
+        case_2.1 += utils_64::extract_bits(c as u64, 0u32, log2n);
+        case_2 = pseudo_u64_shift(case_2, 6u32);
+        case_2.1 += utils_64::extract_bits((s.head) as u64, 0u32, 6u32);
+        case_2 = pseudo_u64_shift(case_2, 6u32);
+        case_2.1 += utils_64::extract_bits(center_bits as u64, 0u32, 6u32);
+        case_2 = pseudo_u64_shift(case_2, center_bits);
+        case_2.1 += utils_64::extract_bits(xorred, (s.tail) as u32, center_bits);
+        let mut case_2_bit_count = 2 + 6 + 6 + center_bits;
 
         // case 3: tail<=6 and lead=pr_lead
-        let mut case_3: vec2<u32> = vec2(0, 2u32); // code 10
-        case_3 = self.pseudo_u64_shift(case_3, log2n);
-        case_3.1 += extract_bits(c as u32, 0u32, log2n);
-        case_3 = self.pseudo_u64_shift(case_3, (32 - s.head) as u32);
-        case_3.1 += extract_bits(xorred, 0u32, (32 - s.head) as u32);
-        let mut case_3_bit_count: u32 = 2 + 32 - (s.head) as u32;
+        let mut case_3: vec2<u64> = vec2::<u64>(0, 2); // code 10
+        case_3 = pseudo_u64_shift(case_3, log2n);
+        case_3.1 += utils_64::extract_bits(c as u64, 0u32, log2n);
+        case_3 = pseudo_u64_shift(case_3, (64 - s.head) as u32);
+        case_3.1 += utils_64::extract_bits(xorred, 0u32, (64 - s.head) as u32);
+        let mut case_3_bit_count: u32 = 2 + 64 - (s.head) as u32;
 
         // case 4: tail<=6 and lead!=pr_lead
-        let mut case_4: vec2<u32> = vec2(0, 3u32); // code 11
-        case_4 = self.pseudo_u64_shift(case_4, log2n);
-        case_4.1 += extract_bits(c as u32, 0u32, log2n);
-        case_4 = self.pseudo_u64_shift(case_4, 5u32);
-        case_4.1 += extract_bits((s.head) as u32, 0u32, 5u32);
-        case_4 = self.pseudo_u64_shift(case_4, (32 - s.head) as u32);
-        case_4.1 += extract_bits(xorred, 0u32, (32 - s.head) as u32);
-        let mut case_4_bit_count: u32 = 2 + 5 + 32 - (s.head) as u32;
+        let mut case_4: vec2<u64> = vec2::<u64>(0, 3); // code 11
+        case_4 = pseudo_u64_shift(case_4, log2n);
+        case_4.1 += utils_64::extract_bits(c as u64, 0u32, log2n);
+        case_4 = pseudo_u64_shift(case_4, 6u32);
+        case_4.1 += utils_64::extract_bits((s.head) as u64, 0u32, 6u32);
+        case_4 = pseudo_u64_shift(case_4, (64 - s.head) as u32);
+        case_4.1 += utils_64::extract_bits(xorred, 0u32, (64 - s.head) as u32);
+        let mut case_4_bit_count: u32 = 2 + 6 + 64 - (s.head) as u32;
 
-        let mut final_output_i32 = vec_condition(s.equal) * case_1;
-        final_output_i32 += vec_condition(trail_gt_6 * not_equal) * case_2;
-        final_output_i32 += vec_condition(trail_le_6 * pr_lead_eq_lead) * case_3;
-        final_output_i32 += vec_condition(trail_le_6 * pr_lead_ne_lead) * case_4;
+        let mut final_output_i32 = vec_condition(s.equal as u64) * case_1;
+        final_output_i32 += vec_condition((trail_gt_6 * not_equal) as u64) * case_2;
+        final_output_i32 += vec_condition((trail_le_6 * pr_lead_eq_lead) as u64) * case_3;
+        final_output_i32 += vec_condition((trail_le_6 * pr_lead_ne_lead) as u64) * case_4;
         let mut final_output = vec2((final_output_i32.0), (final_output_i32.1));
 
         let mut final_bit_count = log2n
@@ -126,43 +99,11 @@ impl CPUBatchedNCompressImpl {
             + (trail_gt_6 * not_equal) * case_2_bit_count
             + (trail_le_6 * pr_lead_eq_lead) * case_3_bit_count
             + (trail_le_6 * pr_lead_ne_lead) * case_4_bit_count;
-        return ChimpOutput {
+        return ChimpOutput64 {
             upper_bits: final_output.0,
             lower_bits: final_output.1,
-            bit_count: (final_bit_count),
+            bit_count: (final_bit_count) as u64,
         };
-    }
-    fn vec_condition(condition: u32) -> vec2<u32> {
-        return vec2(condition, condition);
-    }
-
-    fn pseudo_u64_shift(&self, output: vec2<u32>, number: u32) -> vec2<u32> {
-        let mut first_number_bits: u32 =
-            wgpu_compress_32_batched::cpu::finalize::extract_bits(output.1, 32 - number, number);
-        let mut new_output = vec2(output.0, output.1);
-        let mut check = (number < 32);
-        new_output.0 = if (check) { output.0 << number } else { 0 };
-        new_output.0 += first_number_bits;
-        new_output.1 = if check { output.1 << number } else { 0 };
-
-        return new_output;
-    }
-
-    fn pseudo_u64_add(&self, output: vec2<u32>, number: u32) -> vec2<u32> {
-        // check if adding <number> causes an overflow
-        let mut max_u32: u32 = 0xffffffffu32;
-        let mut isOverflow = (output.1 >= (max_u32 - number));
-        // let mut isNotOverflow:u32=(1i32-isOverflow as i32).abs() as u32;
-        let mut diff: u32 = max_u32 - output.1;
-
-        let mut new_ouput = vec2(output.0, output.1);
-        new_ouput.0 += if isOverflow { 1 } else { 0 };
-        new_ouput.1 = if isOverflow {
-            number - diff
-        } else {
-            output.1 + number
-        };
-        return new_ouput;
     }
 }
 impl MaxGroupGnostic for CPUBatchedNCompressImpl {
@@ -172,7 +113,7 @@ impl MaxGroupGnostic for CPUBatchedNCompressImpl {
 }
 
 #[async_trait]
-impl FinalCompress for CPUBatchedNCompressImpl {
+impl FinalCompressN64 for CPUBatchedNCompressImpl {
     async fn final_compress(
         &self,
         buffers: &mut RunBuffers,
@@ -218,7 +159,7 @@ impl FinalCompress for CPUBatchedNCompressImpl {
 
         let workgroup_count = self.get_max_number_of_groups(values.len());
 
-        let mut compress = vec![ChimpOutput::default(); values.len()];
+        let mut compress = vec![ChimpOutput64::default(); values.len()];
 
         let chunks = ChimpBufferInfo::get().chunks();
         let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
@@ -240,10 +181,10 @@ impl FinalCompress for CPUBatchedNCompressImpl {
                 }
             }
             for workgroup in (0..workgroup_count) {
-                compress[(workgroup) * 256 * chunks] = ChimpOutput {
+                compress[(workgroup) * 256 * chunks] = ChimpOutput64 {
                     upper_bits: 0,
                     lower_bits: bytemuck::cast(values[(workgroup) * 256 * chunks]),
-                    bit_count: 32u32,
+                    bit_count: 64u64,
                 };
             }
         }

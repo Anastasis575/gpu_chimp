@@ -18,6 +18,9 @@ var<storage, read_write> in: array<f64>; // this is used as both input and outpu
 @binding(2)
 var<uniform> chunks:u32; // how many iterations per buffer
 
+@group(0)
+@binding(3)
+var<storage, read_write> id_to_write: array<u32>; // this is used as both input and output for convenience
 
 
 fn calculate_s(workgoup_size:u32,id:u32,v_prev:f64,v:f64) -> Ss{
@@ -72,6 +75,7 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>,@builtin(local_invocation
     //@workgroup_offset
     for (var i=0u;i<chunks;i++){
         let index:u32=(workgroup_offset+workgroup_id.x) * 256 * chunks + invocation_id.x+i*256u;
-        s_store[index+1] = calculate_s(chunks*256,index,in[index],in[index+1]);
+        let prev_id=id_to_write[index+1u];
+        s_store[index+1] = calculate_s(chunks*256,index,in[index+1u-prev_id],in[index+1]);
     }
 }

@@ -2,7 +2,7 @@ use std::cmp::min;
 use std::ops::{AddAssign, Mul};
 
 #[allow(non_camel_case_types)]
-pub struct vec2<T>(pub(crate) T, pub(crate) T);
+pub struct vec2<T>(pub T, pub T);
 pub fn pseudo_u64_shift(output: vec2<u64>, number: u32) -> vec2<u64> {
     let first_number_bits = extract_bits(output.1, 64 - number, number) as u64;
     let mut new_output = vec2(output.0, output.1);
