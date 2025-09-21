@@ -67,16 +67,15 @@ impl FinalizeN64 for FinalizerN64 {
         let chimp_input_len = buffers.compressed_buffer().size() / size_of::<ChimpOutput64>();
         let chimp_input_length_no_padding = chimp_input_len - padding;
         let size = ChimpBufferInfo::get().buffer_size() as u32;
-        let last_size = if chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size() == 0
-        {
-            ChimpBufferInfo::get().buffer_size()
-        } else {
-            chimp_input_length_no_padding % ChimpBufferInfo::get().buffer_size()
-        } as u32
-            - 2;
+        let last_size =
+            if (chimp_input_length_no_padding - 1) % ChimpBufferInfo::get().buffer_size() == 0 {
+                ChimpBufferInfo::get().buffer_size()
+            } else {
+                (chimp_input_length_no_padding - 1) % ChimpBufferInfo::get().buffer_size()
+            } as u32;
 
         let output_buffer_size =
-            ((*indexes.last().unwrap() + 1) as usize * size_of::<u64>()) as BufferAddress;
+            ((*indexes.last().unwrap()) as usize * size_of::<u64>()) as BufferAddress;
 
         let workgroup_count = chimp_input_len.div(ChimpBufferInfo::get().buffer_size());
 

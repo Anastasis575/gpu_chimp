@@ -138,9 +138,6 @@ impl CPUDecompressorBatched64 {
             // iteration_compressed_values.len() * size_of::<u8>()
             // );
 
-            let out_buffer_size = (iteration_input_indexes.len() - 1)
-                * ChimpBufferInfo::get().buffer_size()
-                * size_of::<f64>();
             //info!(
             // "The uncompressed output values buffer size in bytes: {}",
             // out_buffer_size

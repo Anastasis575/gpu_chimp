@@ -128,7 +128,7 @@ fn write(input_idx:u32,output_idx:u32){
             
             let compare_offset=reinterpret_num(current_info.current_index,current_info.current_offset, log2n);
             current_info=decr_counter_capped_at_32(&current_info,log2n);
-            
+            last_num=bitcast<u64>(out[output_index - u32(compare_offset)]);
             out[output_index]=bitcast<f64>(last_num);
             var lead = last_lead_array[output_index-u32(compare_offset)];
             last_lead_array[output_index] = u64(64u);

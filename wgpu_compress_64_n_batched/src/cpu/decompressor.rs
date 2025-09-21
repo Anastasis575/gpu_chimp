@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use compress_utils::context::Context;
 use compress_utils::cpu_compress::{DecompressionError, Decompressor};
 use compress_utils::general_utils::{
-    ChimpBufferInfo, DecompressResult, MaxGroupGnostic, Step, trace_steps,
+    trace_steps, ChimpBufferInfo, DecompressResult, MaxGroupGnostic, Step,
 };
 use compress_utils::{
-    BufferWrapper, WgpuGroupId, execute_compute_shader, step, time_it, wgpu_utils,
+    execute_compute_shader, step, time_it, wgpu_utils, BufferWrapper, WgpuGroupId,
 };
 use itertools::Itertools;
 use log::info;
@@ -16,8 +16,8 @@ use std::sync::Arc;
 use std::time::Instant;
 use wgpu::{Device, Queue};
 use wgpu_compress_32_batched::cpu::finalize::extract_bits;
-use wgpu_compress_64_batched::ChimpCompressorBatched64;
 use wgpu_compress_64_batched::cpu::utils_64;
+use wgpu_compress_64_batched::ChimpCompressorBatched64;
 use wgpu_types::BufferAddress;
 
 #[async_trait]
@@ -33,51 +33,38 @@ impl Decompressor<f64> for BatchedCPUN64Decompressor {
         let mut skip_time = 0;
         time_it!(
             {
+                let mut compressed_bytes_vec: &[u64] = bytemuck::cast_slice(compressed_bytes_vec);
                 let mut vec_window = Vec::new();
                 let mut total_uncompressed_values = 0;
                 let mut input_indexes = Vec::new();
                 while current_index < compressed_bytes_vec.len() {
                     while current_index < compressed_bytes_vec.len() {
                         let old_index = current_index;
-                        let buffer_value_count = u32::from_be_bytes(
-                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                                .try_into()
-                                .unwrap(),
-                        ) as usize
-                            + 1;
-                        current_index += size_of::<u32>();
+                        let size_in_bytes =
+                            (compressed_bytes_vec[current_index] & 0xFFFFFFFF) as usize;
+                        let size = size_in_bytes / size_of::<u64>();
 
-                        let size_in_bytes = u32::from_be_bytes(
-                            compressed_bytes_vec[current_index..current_index + size_of::<u32>()]
-                                .try_into()
-                                .unwrap(),
-                        );
-                        current_index += size_of::<u32>();
-                        if vec_window.len() + size_in_bytes as usize
-                            >= ChimpCompressorBatched64::MAX_BUFFER_SIZE_BYTES
+                        if (vec_window.len() + size_in_bytes as usize)
+                            >= self.context.get_max_storage_buffer_size() / size_of::<u64>()
                         {
                             current_index = old_index;
                             break;
                         }
-                        let byte_window_vec = compressed_bytes_vec
-                            [current_index..current_index + (size_in_bytes as usize)]
-                            .to_vec();
-                        let mut byte_window = byte_window_vec.as_slice();
-                        assert_eq!(
-                            byte_window.len() % 8,
-                            0,
-                            "Total bytes need to be in batches of 8"
-                        );
-                        while let Some((first_four_bytes, rest)) = byte_window.split_at_checked(8) {
-                            byte_window = rest;
-                            //parse u32 from groups of 8 bytes
-                            let value_u64 =
-                                u64::from_le_bytes(first_four_bytes.try_into().unwrap());
-                            vec_window.push(value_u64);
+                        let buffer_value_count = (compressed_bytes_vec[current_index] >> 32) + 1;
+                        current_index += 1;
+                        if (input_indexes.len() + 1) * ChimpBufferInfo::get().buffer_size() * 4
+                            >= self.context.get_max_storage_buffer_size()
+                        {
+                            current_index = old_index;
+                            break;
                         }
+                        vec_window.extend(
+                            compressed_bytes_vec[current_index..current_index + size].to_vec(),
+                        );
+
                         input_indexes.push(vec_window.len() as u32);
-                        current_index += size_in_bytes as usize;
-                        total_uncompressed_values += buffer_value_count
+                        current_index += size as usize;
+                        total_uncompressed_values += buffer_value_count as usize
                     }
                     input_indexes.insert(0, 0);
                     //Block is as many buffers fit into the gpu the distinction is made for compatibility reasons
@@ -94,12 +81,18 @@ impl Decompressor<f64> for BatchedCPUN64Decompressor {
                         .await?;
 
                     uncompressed_values.extend(block_values[0..total_uncompressed_values].iter());
+                    vec_window.clear();
+                    total_uncompressed_values = 0;
+                    input_indexes.clear();
                 }
             },
             total_millis,
             "decompression"
         );
-        Ok(uncompressed_values.into())
+        step!(Step::Decompress, {
+            uncompressed_values.iter().map(|it: &f64| it.to_string())
+        });
+        Ok(DecompressResult(uncompressed_values, skip_time))
     }
 }
 
@@ -262,7 +255,7 @@ impl CPU64DecompressorNWriter {
 
         self.output[output_index] = bytemuck::cast(first_num);
         output_index += 1usize;
-        current_info.current_offset += 32u32;
+        current_info.current_offset += 64u32;
 
         let mut value;
         for i in 1..self.size {
@@ -374,7 +367,7 @@ impl CPU64DecompressorNWriter {
                     log2n,
                 ) as usize;
                 current_info = self.decr_counter_capped_at_32(current_info, log2n);
-                let mut last_num: u32 = bytemuck::cast(self.output[output_index - compare_offset]);
+                let mut last_num: u64 = bytemuck::cast(self.output[output_index - compare_offset]);
                 let mut lead = self.last_lead_array[output_index - compare_offset];
                 self.output[output_index] = bytemuck::cast(last_num);
                 self.last_lead_array[output_index] = 64u64;

@@ -105,6 +105,10 @@ impl CPUBatchedNCompressImpl {
             bit_count: (final_bit_count) as u64,
         };
     }
+
+    pub fn new(context: Arc<Context>, n: usize) -> Self {
+        Self { context, n }
+    }
 }
 impl MaxGroupGnostic for CPUBatchedNCompressImpl {
     fn get_max_number_of_groups(&self, content_len: usize) -> usize {

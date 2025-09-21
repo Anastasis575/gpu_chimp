@@ -9,7 +9,7 @@ struct Ss {
 
 @group(0)
 @binding(1)
-var<storage, read_write> input: array<f64>; // this is used as both input and output for convenience
+var<storage, read_write> input: array<pseudo_u64>; // this is used as both input and output for convenience
 @group(0)
 @binding(2)
 var<uniform> size: u32; // this is used as both input and output for convenience
@@ -21,7 +21,10 @@ var<uniform> size: u32; // this is used as both input and output for convenience
 @binding(3)
 var<storage, read_write> id_to_write: array<u32>; // this is used as both input and output for convenience
 
-
+struct pseudo_u64{
+    hi:u32,
+    lo:u32
+}
 
 fn find_most_similar_previous_value(workgroup_start:u32) {
    //@n
@@ -33,12 +36,12 @@ fn find_most_similar_previous_value(workgroup_start:u32) {
    var indices=array<u32,indices_size>();
    let threshold= 6 + u32(log2n);
    for (var step=1u+workgroup_start;step<size+workgroup_start;step++){
-      let value=bitcast<u64>(input[step]);
-      var key=u32(value) & setlsb;
+      let value=input[step];
+      var key=value.lo & setlsb;
       let currIndex = indices[key];
       if (currIndex>0&&(step - currIndex) < n) {
-          let tempXor = value ^ u64(input[currIndex]);
-          let trailingZeros = countLeadingZeros64(tempXor);
+          let tempXor = to_u64(value) ^ to_u64(input[currIndex]);
+          let trailingZeros = countTrailingZeros64(tempXor);
       
           if (trailingZeros > threshold) {
               previousIndex = step-currIndex ;
@@ -76,6 +79,9 @@ fn countTrailingZeros64(x: u64) -> u32 {
     }
     // Otherwise, just count trailing zeros in low part
     return countTrailingZeros(low);
+}
+fn to_u64(x:pseudo_u64)->u64{
+    return (u64(x.hi)<<32u)+u64(x.lo);
 }
 
 @compute
