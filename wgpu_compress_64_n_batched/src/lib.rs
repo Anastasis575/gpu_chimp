@@ -45,98 +45,99 @@ mod tests {
         unsafe {
             env::set_var("CHIMP_BUFFER_SIZE", "1024".to_string());
         }
+        for n in [32, 64, 128] {
+            for file_name in vec![
+                "city_temperature.csv",
+                "SSD_HDD_benchmarks.csv",
+                "Stocks-Germany-sample.txt",
+            ]
+            .into_iter()
+            {
+                println!("{file_name}");
+                let filename = format!("{}_chimp64_n_{n}_output_no_io.txt", &file_name);
+                if fs::exists(&filename).unwrap() {
+                    fs::remove_file(&filename).unwrap();
+                }
+                let mut messages = Vec::<String>::with_capacity(30);
+                let mut values = get_values(file_name)
+                    .expect("Could not read test values")
+                    .to_vec();
+                let mut reader = TimeSeriesReader::new(500_000, values.clone(), 500_000_000);
+                for size_checkpoint in 1..11 {
+                    while let Some(block) = reader.next() {
+                        values.extend(block);
+                        if values.len() >= (size_checkpoint * reader.max_size()) / 100 {
+                            break;
+                        }
+                    }
+                    let mut value_new = values.to_vec();
+                    println!("Starting compression of {} values", value_new.len());
+                    let time = std::time::Instant::now();
+                    let compressor = ChimpN64GPUBatched::new(context.clone(), 32);
+                    let mut compressed_values2 =
+                        compressor.compress(&mut value_new).block_on().unwrap();
+                    let compression_time = time.elapsed().as_millis();
+                    // println!("{}", compression_time);
+                    const SIZE_IN_BYTE: usize = 8;
+                    let compression_ratio = (compressed_values2.compressed_value_ref().len()
+                        * SIZE_IN_BYTE) as f64
+                        / value_new.len() as f64;
+                    messages.push(format!(
+                        "Compression ratio {} values: {compression_ratio}\n",
+                        value_new.len()
+                    ));
+                    // println!("{}", messages.last().unwrap());
+                    messages.push(format!(
+                        "Encoding time {} values: {}\n",
+                        value_new.len(),
+                        compression_time - compressed_values2.skip_time()
+                    ));
+                    // println!("{}", compression_time - compressed_values2.skip_time());
+                    // println!("{}", messages.last().unwrap());
 
-        for file_name in vec![
-            "city_temperature.csv",
-            "SSD_HDD_benchmarks.csv",
-            "Stocks-Germany-sample.txt",
-        ]
-        .into_iter()
-        {
-            println!("{file_name}");
-            let filename = format!("{}_chimp32_output_no_io.txt", &file_name);
-            if fs::exists(&filename).unwrap() {
-                fs::remove_file(&filename).unwrap();
-            }
-            let mut messages = Vec::<String>::with_capacity(30);
-            let mut values = get_values(file_name)
-                .expect("Could not read test values")
-                .to_vec();
-            let mut reader = TimeSeriesReader::new(500_000, values.clone(), 500_000_000);
-            for size_checkpoint in 1..11 {
-                while let Some(block) = reader.next() {
-                    values.extend(block);
-                    if values.len() >= (size_checkpoint * reader.max_size()) / 100 {
-                        break;
+                    let time = std::time::Instant::now();
+                    let decompressor = GPUDecompressorBatchedN64::new(context.clone(), 32);
+                    match decompressor
+                        .decompress(compressed_values2.compressed_value_mut())
+                        .block_on()
+                    {
+                        Ok(decompressed_values) => {
+                            let decompression_time = time.elapsed().as_millis();
+                            messages.push(format!(
+                                "Decoding time {} values: {}\n",
+                                value_new.len(),
+                                decompression_time - decompressed_values.skip_time()
+                            ));
+                            // println!("{}", messages.last().unwrap());
+                            // fs::write(
+                            //     "actual.log",
+                            //     decompressed_values
+                            //         .un_compressed_value_ref()
+                            //         .iter()
+                            //         .join("\n"),
+                            // )
+                            // .unwrap();
+                            // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
+                            // assert_eq!(decompressed_values.0, value_new);
+                        }
+                        Err(err) => {
+                            eprintln!("Decompression error: {:?}", err);
+                            panic!("{}", err);
+                        }
                     }
                 }
-                let mut value_new = values.to_vec();
-                println!("Starting compression of {} values", value_new.len());
-                let time = std::time::Instant::now();
-                let compressor = ChimpN64GPUBatched::new(context.clone(), 32);
-                let mut compressed_values2 =
-                    compressor.compress(&mut value_new).block_on().unwrap();
-                let compression_time = time.elapsed().as_millis();
-                // println!("{}", compression_time);
-                const SIZE_IN_BYTE: usize = 8;
-                let compression_ratio = (compressed_values2.compressed_value_ref().len()
-                    * SIZE_IN_BYTE) as f64
-                    / value_new.len() as f64;
-                messages.push(format!(
-                    "Compression ratio {} values: {compression_ratio}\n",
-                    value_new.len()
-                ));
-                // println!("{}", messages.last().unwrap());
-                messages.push(format!(
-                    "Encoding time {} values: {}\n",
-                    value_new.len(),
-                    compression_time - compressed_values2.skip_time()
-                ));
-                // println!("{}", compression_time - compressed_values2.skip_time());
-                // println!("{}", messages.last().unwrap());
-
-                let time = std::time::Instant::now();
-                let decompressor = GPUDecompressorBatchedN64::new(context.clone(), 32);
-                match decompressor
-                    .decompress(compressed_values2.compressed_value_mut())
-                    .block_on()
-                {
-                    Ok(decompressed_values) => {
-                        let decompression_time = time.elapsed().as_millis();
-                        messages.push(format!(
-                            "Decoding time {} values: {}\n",
-                            value_new.len(),
-                            decompression_time - decompressed_values.skip_time()
-                        ));
-                        // println!("{}", messages.last().unwrap());
-                        // fs::write(
-                        //     "actual.log",
-                        //     decompressed_values
-                        //         .un_compressed_value_ref()
-                        //         .iter()
-                        //         .join("\n"),
-                        // )
-                        // .unwrap();
-                        // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
-                        // assert_eq!(decompressed_values.0, value_new);
-                    }
-                    Err(err) => {
-                        eprintln!("Decompression error: {:?}", err);
-                        panic!("{}", err);
-                    }
+                let f = OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(filename)
+                    .expect("temp");
+                let mut fw = f.make_writer();
+                for message in messages {
+                    write!(fw, "{message}").unwrap()
                 }
-            }
-            let f = OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(filename)
-                .expect("temp");
-            let mut fw = f.make_writer();
-            for message in messages {
-                write!(fw, "{message}").unwrap()
             }
         }
-        assert!(true)
+        // assert!(true)
     }
 
     struct TimeSeriesReader {
