@@ -288,7 +288,7 @@ mod tests {
                 .block_on()
                 .unwrap(),
         );
-        env::set_var("CHIMP_BUFFER_SIZE", "1024".to_string());
+        // env::set_var("CHIMP_BUFFER_SIZE", "1024".to_string());
 
         for file_name in vec![
             "city_temperature.csv",
@@ -321,6 +321,11 @@ mod tests {
                 let mut compressed_values2 =
                     compressor.compress(&mut value_new).block_on().unwrap();
                 let compression_time = time.elapsed().as_millis();
+                println!(
+                    "Compression time {} values: {}",
+                    value_new.len(),
+                    compression_time - compressed_values2.skip_time()
+                );
 
                 const SIZE_IN_BYTE: usize = 8;
                 let compression_ratio = (compressed_values2.compressed_value_ref().len()
@@ -349,7 +354,12 @@ mod tests {
                             value_new.len(),
                             decompression_time - decompressed_values.skip_time()
                         ));
-                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        println!(
+                            "Decoding time {} values: {}\n",
+                            value_new.len(),
+                            decompression_time - decompressed_values.skip_time()
+                        );
+                        // fs::write("actual.log", decompressed_values.0.iter().join("\n")).unwrap();
                         // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values.0, value_new);
                     }
@@ -429,8 +439,9 @@ mod tests {
                     value_new.len()
                 ));
                 messages.push(format!(
-                    "Encoding time {} values: {compression_time}\n",
-                    value_new.len()
+                    "Encoding time {} values: {}\n",
+                    value_new.len(),
+                    compression_time - compressed_values2.skip_time()
                 ));
 
                 let time = std::time::Instant::now();
@@ -442,10 +453,11 @@ mod tests {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
                         messages.push(format!(
-                            "Decoding time {} values: {decompression_time}\n",
-                            value_new.len()
+                            "Decoding time {} values: {}\n",
+                            value_new.len(),
+                            decompression_time - decompressed_values.skip_time()
                         ));
-                        // fs::write("actual.log", decompressed_values.iter().join("\n")).unwrap();
+                        // fs::write("actual.log", decompressed_values.0.iter().join("\n")).unwrap();
                         // fs::write("expected.log", values.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values.0, value_new);
                     }

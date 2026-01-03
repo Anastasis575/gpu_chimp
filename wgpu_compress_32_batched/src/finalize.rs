@@ -50,6 +50,68 @@ impl Finalizer {
 
 #[async_trait]
 impl Finalize for Finalizer {
+    /// ```rust
+    /// /**
+    ///  * Finalizes the compression process by utilizing GPU compute shaders
+    ///  * to perform additional operations on the data buffers, and returns
+    ///  * the results along with metadata.
+    ///  *
+    ///  * # Parameters
+    ///  *
+    ///  * - `self`:
+    ///  *      Reference to the current instance of the executing object.
+    ///  *
+    ///  * - `buffers`:
+    ///  *      A mutable reference to a `RunBuffers` object, which contains the necessary buffers
+    ///  *      for compression and intermediate data processing.
+    ///  *      
+    ///  * - `padding`:
+    ///  *      The size of the padding applied to the compressed input buffer.
+    ///  *
+    ///  * - `skip_time`:
+    ///  *      A mutable reference to a `u128` value used to track the time taken for specific
+    ///  *      computations within the function.
+    ///  *
+    ///  * # Returns
+    ///  *
+    ///  * Returns a `Result` containing a `CompressResult` object with the
+    ///  * following:
+    ///  *
+    ///  * - A `Vec<u8>` containing the final compressed output.
+    ///  * - A `usize` representing metadata size in bytes.
+    ///  * - A `usize` currently set to `0`.
+    ///  *
+    ///  * If any operation inside the function fails, an error is returned.
+    ///  *
+    ///  * # Key Operations
+    ///  *
+    ///  * 1. **Index and Compressed Buffers Processing**:
+    ///  *    The initial setup includes processing the size of the index buffer,
+    ///  *    handling the input length of the compressed buffer, and determining
+    ///  *    the metadata size.
+    ///  *
+    ///  * 2. **Workgroup Calculations**:
+    ///  *    The compute shaders are executed iteratively over workgroups,
+    ///  *    considering GPU constraints (e.g., maximum workgroup size).
+    ///  *
+    ///  * 3. **GPU Buffer Interactions**:
+    ///  *    Leverages WebGPU utilities (`BufferWrapper` and `wgpu_utils`) to
+    ///  *    stage and read data from GPU memory. Uniform buffers and bindings
+    ///  *    are used to pass data to the compute shaders.
+    ///  *
+    ///  * 4. **Compute Shaders**:
+    ///  *    Loads and compiles WGSL (WebGPU Shading Language) shaders dynamically,
+    ///  *    parameterized with specific values for each iteration of the workgroup
+    ///  *    computations.
+    ///  *
+    ///  * 5. **Output Extraction**:
+    ///  *    Transfers the staged output from GPU memory to host memory and
+    ///  *    formats the result, which can include chunking or binary formatting.
+    ///  *
+    ///  * 6. **Time Measurements**:
+    ///  *    Measures elapsed time for various GPU-related computations and aggregates
+    ///  *    the values to the `skip_time` parameter.
+    ///  *
     async fn finalize(
         &self,
         buffers: &mut RunBuffers,
@@ -131,8 +193,8 @@ impl Finalize for Finalizer {
         );
         *skip_time += instant.elapsed().as_millis();
 
-        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
-        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        let iterations = workgroup_count / (256 * self.context.get_max_workgroup_size()) + 1;
+        let last_size = workgroup_count % (256 * self.context.get_max_workgroup_size());
         for i in 0..iterations {
             let offset_decl = format!(
                 "let workgroup_offset={}u;",
@@ -142,9 +204,13 @@ impl Finalize for Finalizer {
                 "let last_pass={}u;",
                 if i == iterations - 1 { 1 } else { 0 }
             );
+            let total_threads = format!("let total_threads={}u;", workgroup_count);
+            let last_index = format!("let last_index={}u;", (*indexes).last().unwrap());
             let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@last_pass", &last_pass)
+                .replace("//@total_threads", &total_threads)
+                .replace("//@last_index", &last_index)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -158,14 +224,18 @@ impl Finalize for Finalizer {
                     &last_size_uniform,
                 ],
                 if i == iterations - 1 {
-                    last_size
+                    last_size.div_ceil(256)
                 } else {
-                    self.context.get_max_workgroup_size()
+                    self.context.get_max_workgroup_size().div_ceil(256)
                 },
                 Some("trim pass")
             );
         }
+
+        //Calculate time elapsed
         let instant = Instant::now();
+
+        //Get the buffer output
         let output = wgpu_utils::get_from_gpu::<u8>(
             self.context(),
             out_storage_buffer.buffer(),

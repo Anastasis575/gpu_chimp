@@ -9,8 +9,8 @@ anyhow = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 bytemuck = { version = "1.23.1", features = ["derive"] }
-wgpu = { workspace = true }
-wgpu-types = { workspace = true }
+wgpu = { version = "26.0.0" }
+wgpu-types = { version = "26.0.0" }
 bit-vec = { workspace = true }
 async-trait = { workspace = true }
 pollster = { workspace = true }
