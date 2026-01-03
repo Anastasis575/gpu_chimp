@@ -73,7 +73,7 @@ mod tests {
                     let mut value_new = values.to_vec();
                     println!("Starting compression of {} values", values.len());
                     let time = std::time::Instant::now();
-                    let compressor = ChimpNGPUBatched::new(context.clone(), 32);
+                    let compressor = ChimpNGPUBatched::new(context.clone(), n);
                     let mut compressed_values2 =
                         compressor.compress(&mut value_new).block_on().unwrap();
                     let compression_time = time.elapsed().as_millis();
@@ -96,7 +96,7 @@ mod tests {
                     // println!("{}", messages.last().unwrap());
 
                     let time = std::time::Instant::now();
-                    let decompressor = BatchedGPUNDecompressor::new(context.clone(), 32);
+                    let decompressor = BatchedGPUNDecompressor::new(context.clone(), n);
                     match decompressor
                         .decompress(compressed_values2.compressed_value_mut())
                         .block_on()

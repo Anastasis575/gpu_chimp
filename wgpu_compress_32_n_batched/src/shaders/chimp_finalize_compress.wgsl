@@ -134,9 +134,26 @@ fn write(idx:u32,out_idx:u32,is_last:u32,next_idx:u32)->u32{
 }
 
 @compute
-@workgroup_size(1)
-fn main(@builtin(workgroup_id) global_id: vec3<u32>,@builtin(num_workgroups) count: vec3<u32>) {
+@workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>,@builtin(num_workgroups) count: vec3<u32>) {
     //@workgroup_offset
     //@last_pass
-    write((workgroup_offset+global_id.x)*size,last_byte_index[(workgroup_offset+global_id.x)],last_pass*u32((global_id.x)==count.x- 1u),last_byte_index[(workgroup_offset+global_id.x)+1u]);
+//    write((workgroup_offset+global_id.x)*size,last_byte_index[(workgroup_offset+global_id.x)],last_pass*u32((global_id.x)==count.x- 1u),last_byte_index[(workgroup_offset+global_id.x)+1u]);
+    
+
+    //@last_index
+    //@total_threads
+    
+    if(workgroup_offset+global_id.x>=total_threads){return;}
+    
+    //Check if this invocation is running the last batch
+    // if it is the last iteration
+    // if it is the last invocation on the last workgroup
+    
+    let current_index=workgroup_offset+global_id.x;
+    
+    let is_last_pass=last_pass*u32(last_byte_index[current_index+1u]==last_index);  
+    
+    write(current_index*size,last_byte_index[current_index],is_last_pass,last_byte_index[current_index+1u]);
+
 }

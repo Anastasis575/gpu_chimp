@@ -170,9 +170,10 @@ fn reinterpret_num(array_index:u32,index:u32,length:u32)->u32{
 
 
 @compute
-@workgroup_size(1)
-fn main(@builtin(workgroup_id) global_id: vec3<u32>) {
+@workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     //@workgroup_offset
-
+    //@total_threads
+    if(workgroup_offset+global_id.x>=total_threads){return;}
     write(input_index[workgroup_offset+global_id.x],(workgroup_offset+global_id.x)*size);
 }
