@@ -200,13 +200,11 @@ impl GPUDecompressorBatchedN64 {
         skip_time: &mut u128,
     ) -> Result<Vec<f64>, DecompressionError> {
         //how many buffers fit into the GPU
-        let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
+        let workgroup_count = self.get_max_number_of_groups(input_indexes.len()) * 256;
 
         //how many iterations I need to fully decompress all the buffers
         let iterator_count = ((input_indexes.len() - 1) / workgroup_count) + 1;
 
-        //input_indexes shows how many buffers of count buffer_value_count, so we use workgroups equal to as many fit in the gpu
-        let mut result = Vec::<f64>::new();
         //info!("The wgpu workgroup size: {}", &workgroup_count);
         let instant = Instant::now();
         let input_storage_buffer = BufferWrapper::storage_with_content(
@@ -246,10 +244,6 @@ impl GPUDecompressorBatchedN64 {
         let workgroup_count = min(workgroup_count, self.context.get_max_workgroup_size());
         for iteration in 0..iterator_count {
             let util_64 = include_str!("shaders/64_utils.wgsl");
-            let offset_decl = format!(
-                "let workgroup_offset={}u;",
-                iteration * self.context.get_max_workgroup_size()
-            );
 
             //split all the buffers to the chunks each iteration will use
             let is_last_iteration = iteration == iterator_count - 1;
@@ -289,11 +283,13 @@ impl GPUDecompressorBatchedN64 {
             );
             let n = format!("let n={}u;", self.n);
             let log2n = format!("let log2n={}u;", self.n.ilog2());
+            let total_threads = format!("let total_threads={}u;", input_indexes.len());
             let shader_code = include_str!("shaders/decompress.wgsl")
                 .replace("//#include(64_utils)", util_64)
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@n", &n)
                 .replace("//@log2n", &log2n)
+                .replace("//@total_threads", &total_threads)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -307,7 +303,7 @@ impl GPUDecompressorBatchedN64 {
                     &in_size,
                     &input_size_uniform
                 ],
-                iteration_input_indexes - 1,
+                iteration_input_indexes.div_ceil(256),
                 Some("decompress pass")
             );
         }

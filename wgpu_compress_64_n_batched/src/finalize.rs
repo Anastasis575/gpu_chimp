@@ -45,10 +45,8 @@ impl FinalizeN64 for FinalizerN64 {
         padding: usize,
         skip_time: &mut u128,
     ) -> Result<CompressResult> {
-        let util_64 = include_str!("shaders/64_utils.wgsl");
-        let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
-            .replace("//#include(64_utils)", util_64)
-            .to_string();
+        // let util_64 = include_str!("shaders/64_utils.wgsl");
+
         let instant = Instant::now();
         let index_staging = BufferWrapper::stage_with_size(
             self.context().device(),
@@ -113,8 +111,8 @@ impl FinalizeN64 for FinalizerN64 {
             Some("Last buffer size Uniform Buffer"),
         );
         *skip_time += instant.elapsed().as_millis();
-        let iterations = workgroup_count / self.context.get_max_workgroup_size() + 1;
-        let last_size = workgroup_count % self.context.get_max_workgroup_size();
+        let iterations = workgroup_count / (256 * self.context.get_max_workgroup_size()) + 1;
+        let last_size = workgroup_count % (256 * self.context.get_max_workgroup_size());
         for i in 0..iterations {
             let offset_decl = format!(
                 "let workgroup_offset={}u;",
@@ -125,10 +123,14 @@ impl FinalizeN64 for FinalizerN64 {
                 if i == iterations - 1 { 1 } else { 0 }
             );
             let util_64 = include_str!("shaders/64_utils.wgsl");
+            let total_threads = format!("let total_threads={}u;", workgroup_count);
+            let last_index = format!("let last_index={}u;", (*indexes).last().unwrap());
             let temp = include_str!("shaders/chimp_finalize_compress.wgsl")
                 .replace("//#include(64_utils)", util_64)
                 .replace("//@workgroup_offset", &offset_decl)
                 .replace("//@last_pass", &last_pass)
+                .replace("//@total_threads", &total_threads)
+                .replace("//@last_index", &last_index)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -142,9 +144,9 @@ impl FinalizeN64 for FinalizerN64 {
                     &last_size_uniform,
                 ],
                 if i == iterations - 1 {
-                    last_size
+                    last_size.div_ceil(256)
                 } else {
-                    self.context.get_max_workgroup_size()
+                    self.context.get_max_workgroup_size().div_ceil(256)
                 },
                 Some("trim pass")
             );
