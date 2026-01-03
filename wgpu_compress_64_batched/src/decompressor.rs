@@ -199,7 +199,7 @@ impl GPUDecompressorBatched64 {
         skip_time: &mut u128,
     ) -> Result<Vec<f64>, DecompressionError> {
         //how many buffers fit into the GPU
-        let workgroup_count = self.get_max_number_of_groups(input_indexes.len());
+        let workgroup_count = self.get_max_number_of_groups(input_indexes.len()) * 256;
 
         //how many iterations I need to fully decompress all the buffers
         let iterator_count = ((input_indexes.len() - 1) / workgroup_count) + 1;
@@ -277,9 +277,12 @@ impl GPUDecompressorBatched64 {
             );
 
             let s_offset = format!("let in_offset={offset}u;");
+            let total_threads = format!("let total_threads={}u;", input_indexes.len());
+
             let shader_code = include_str!("shaders/decompress.wgsl")
                 .replace("//#include(64_utils)", util_64)
                 .replace("//@workgroup_offset", &offset_decl)
+                .replace("//@total_threads", &total_threads)
                 .to_string();
             execute_compute_shader!(
                 self.context(),
@@ -292,7 +295,7 @@ impl GPUDecompressorBatched64 {
                     &in_size,
                     &input_size_uniform
                 ],
-                iteration_input_indexes - 1,
+                iteration_input_indexes.div_ceil(256),
                 Some("decompress pass")
             );
         }

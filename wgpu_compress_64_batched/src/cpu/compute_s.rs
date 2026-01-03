@@ -1,3 +1,4 @@
+#[allow(non_snake_case)]
 use crate::compute_s_shader::ComputeS;
 use async_trait::async_trait;
 use compress_utils::context::Context;
