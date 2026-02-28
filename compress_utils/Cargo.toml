@@ -19,4 +19,4 @@ wgpu-types = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { workspace = true }

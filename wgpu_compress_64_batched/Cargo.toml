@@ -13,10 +13,7 @@ log = { workspace = true }
 bytemuck = { version = "1.23.1", features = ["derive"] }
 wgpu = { workspace = true }
 wgpu-types = { workspace = true }
-bit-vec = { workspace = true }
 async-trait = { workspace = true }
 pollster = "0.4.0"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-thiserror = { workspace = true }
-indicatif = "0.18.0"
-once_cell = "1.21.3"
+csv = { workspace = true }
