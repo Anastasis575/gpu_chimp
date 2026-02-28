@@ -22,3 +22,16 @@ fn main(@builtin(workgroup_id) workgroup_id: vec3<u32>) {
 
         out[(workgroup_offset+workgroup_id.x )* 256 * chunks]= Output(0,bitcast<u32>(input[(workgroup_offset+workgroup_id.x) * 256 * chunks]),32u);
 }
+//@group(0)
+//@binding(0)
+//var<storage, read_write> out: array<u32>; 
+//@group(0)
+//@binding(1)
+//var<storage, read_write> input:array<u32>; 
+//
+//@compute
+//@workgroup_size(1)
+//fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+//   
+//   out[global_id.x+1]=in[global_id.x]+in[global_id+1];
+//}

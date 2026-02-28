@@ -16,3 +16,5 @@ async-trait = { workspace = true }
 pollster = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 thiserror = { workspace = true }
+serde = { version = "1.0.217", features = ["derive"] }
+csv = { version = "1.4.0" }

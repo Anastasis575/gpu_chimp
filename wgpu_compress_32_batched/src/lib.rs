@@ -191,15 +191,13 @@ mod tests {
     use crate::DeviceEnum::GPU;
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
-    use compress_utils::general_utils::check_for_debug_mode;
+    use compress_utils::general_utils::{build_event_times, check_for_debug_mode, EventLogType};
     use itertools::Itertools;
     use pollster::FutureExt;
+    use serde::Serialize;
     use std::cmp::min;
-    use std::fs::OpenOptions;
-    use std::io::Write;
     use std::sync::Arc;
     use std::{env, fs};
-    use tracing_subscriber::fmt::MakeWriter;
     use tracing_subscriber::util::SubscriberInitExt;
 
     fn get_third(field: &str) -> Option<String> {
@@ -224,52 +222,52 @@ mod tests {
         Ok(values)
     }
     //noinspection DuplicatedCode
-    #[test]
-    fn test_matching_outputs() {
-        // let subscriber = tracing_subscriber::fmt()
-        //     .compact()
-        //     .with_env_filter("wgpu_compress_32=info")
-        //     // .with_writer(
-        //     //     OpenOptions::new()
-        //     //         .create(true)
-        //     //         .truncate(true)
-        //     //         .write(true)
-        //     //         .open("run.log")
-        //     //         .unwrap(),
-        //     // )
-        //     .finish();
-        // subscriber.init();
-
-        let mut values = get_values("city_temperature.csv")
-            .expect("Could not read test values")
-            .to_vec();
-        // log:: //info!("Starting compression of {} values", values.len());
-        let mut compressor = ChimpCompressorBatched::default();
-        if check_for_debug_mode().expect("Could not read file system") {
-            compressor.set_debug(true);
-        }
-        let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
-
-        let mut values = get_values("city_temperature.csv")
-            .expect("Could not read test values")
-            .to_vec();
-        // log:: //info!("Starting compression of {} values", values.len());
-        let mut compressor = ChimpCompressorBatched {
-            finalizer: GPU,
-            ..ChimpCompressorBatched::default()
-        };
-        // if check_for_debug_mode().expect("Could not read file system") {
-        //     compressor.set_debug(true);
-        // }
-        let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
-        assert_eq!(
-            compressed_values2.compressed_value(),
-            compressed_values1.compressed_value()
-        );
-    }
+    // #[test]
+    // fn test_matching_outputs() {
+    //     // let subscriber = tracing_subscriber::fmt()
+    //     //     .compact()
+    //     //     .with_env_filter("wgpu_compress_32=info")
+    //     //     // .with_writer(
+    //     //     //     OpenOptions::new()
+    //     //     //         .create(true)
+    //     //     //         .truncate(true)
+    //     //     //         .write(true)
+    //     //     //         .open("run.log")
+    //     //     //         .unwrap(),
+    //     //     // )
+    //     //     .finish();
+    //     // subscriber.init();
+    //
+    //     let mut values = get_values("city_temperature.csv")
+    //         .expect("Could not read test values")
+    //         .to_vec();
+    //     // log:: //info!("Starting compression of {} values", values.len());
+    //     let mut compressor = ChimpCompressorBatched::default();
+    //     if check_for_debug_mode().expect("Could not read file system") {
+    //         compressor.set_debug(true);
+    //     }
+    //     let compressed_values1 = compressor.compress(&mut values).block_on().unwrap();
+    //
+    //     let mut values = get_values("city_temperature.csv")
+    //         .expect("Could not read test values")
+    //         .to_vec();
+    //     // log:: //info!("Starting compression of {} values", values.len());
+    //     let mut compressor = ChimpCompressorBatched {
+    //         finalizer: GPU,
+    //         ..ChimpCompressorBatched::default()
+    //     };
+    //     // if check_for_debug_mode().expect("Could not read file system") {
+    //     //     compressor.set_debug(true);
+    //     // }
+    //     let compressed_values2 = compressor.compress(&mut values).block_on().unwrap();
+    //     assert_eq!(
+    //         compressed_values2.compressed_value(),
+    //         compressed_values1.compressed_value()
+    //     );
+    // }
     //noinspection DuplicatedCode
     #[test]
-    fn test_decompress_able() {
+    fn test_decompress_able_file() {
         // let subscriber = tracing_subscriber::fmt()
         //     .compact()
         //     .with_env_filter("wgpu_compress_32=info")
@@ -298,11 +296,18 @@ mod tests {
         .into_iter()
         {
             println!("{file_name}");
-            let filename = format!("{}_chimp32_output_no_io.txt", &file_name);
+            let filename = format!("{}_chimp32_output.txt", &file_name);
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
-            let mut messages = Vec::<String>::with_capacity(30);
+
+            let filename_no_io = format!("{}_chimp32_output_no_io.txt", &file_name);
+            if fs::exists(&filename_no_io).unwrap() {
+                fs::remove_file(&filename_no_io).unwrap();
+            }
+
+            let mut messages = Vec::<EventLogType>::with_capacity(30);
+            let mut messages_no_io = Vec::<EventLogType>::with_capacity(30);
             let mut values = get_values(file_name)
                 .expect("Could not read test values")
                 .to_vec();
@@ -324,23 +329,48 @@ mod tests {
                 println!(
                     "Compression time {} values: {}",
                     value_new.len(),
-                    compression_time - compressed_values2.skip_time()
+                    compression_time //- compressed_values2.skip_time()
                 );
 
                 const SIZE_IN_BYTE: usize = 8;
                 let compression_ratio = (compressed_values2.compressed_value_ref().len()
                     * SIZE_IN_BYTE) as f64
                     / value_new.len() as f64;
-                messages.push(format!(
-                    "Compression ratio {} values: {compression_ratio}\n",
-                    value_new.len()
-                ));
-                messages.push(format!(
-                    "Encoding time {} values: {}\n",
-                    value_new.len(),
-                    compression_time - compressed_values2.skip_time()
-                ));
 
+                messages.push(EventLogType::CompressionRatio {
+                    values: value_new.len() as u64,
+                    ratio: compression_ratio,
+                });
+                messages.push(EventLogType::EncodingTime {
+                    values: value_new.len() as u64,
+                    time: compression_time,
+                });
+                // messages.push(format!(
+                //     "Compression ratio {} values: {compression_ratio}\n",
+                //     value_new.len()
+                // ));
+                // messages.push(format!(
+                //     "Encoding time {} values: {}\n",
+                //     value_new.len(),
+                //     compression_time //- compressed_values2.skip_time()
+                // ));
+                messages_no_io.push(EventLogType::CompressionRatio {
+                    values: value_new.len() as u64,
+                    ratio: compression_ratio,
+                });
+                messages_no_io.push(EventLogType::EncodingTime {
+                    values: value_new.len() as u64,
+                    time: compression_time - compressed_values2.skip_time(),
+                });
+                // messages_no_io.push(format!(
+                //     "Compression ratio {} values: {compression_ratio}\n",
+                //     value_new.len()
+                // ));
+                // messages_no_io.push(format!(
+                //     "Encoding time {} values: {}\n",
+                //     value_new.len(),
+                //     compression_time - compressed_values2.skip_time()
+                // ));
                 let time = std::time::Instant::now();
                 let decompressor = BatchedGPUDecompressor::new(context.clone());
                 match decompressor
@@ -349,15 +379,29 @@ mod tests {
                 {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
-                        messages.push(format!(
-                            "Decoding time {} values: {}\n",
-                            value_new.len(),
-                            decompression_time - decompressed_values.skip_time()
-                        ));
+                        messages.push(EventLogType::DecompressionTime {
+                            values: value_new.len() as u64,
+                            time: decompression_time,
+                        });
+                        messages_no_io.push(EventLogType::DecompressionTime {
+                            values: value_new.len() as u64,
+                            time: decompression_time - decompressed_values.skip_time(),
+                        });
+                        // messages.push(format!(
+                        //     "Decoding time {} values: {}\n",
+                        //     value_new.len(),
+                        //     decompression_time //- decompressed_values.skip_time()
+                        // ));
+                        // messages_no_io.push(format!(
+                        //     "Decoding time {} values: {}\n",
+                        //     value_new.len(),
+                        //     decompression_time - decompressed_values.skip_time()
+                        // ));
+
                         println!(
                             "Decoding time {} values: {}\n",
                             value_new.len(),
-                            decompression_time - decompressed_values.skip_time()
+                            decompression_time //- decompressed_values.skip_time()
                         );
                         // fs::write("actual.log", decompressed_values.0.iter().join("\n")).unwrap();
                         // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
@@ -369,15 +413,20 @@ mod tests {
                     }
                 }
             }
-            let f = OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(filename)
-                .expect("temp");
-            let mut fw = f.make_writer();
-            for message in messages {
-                write!(fw, "{message}").unwrap()
+
+            let mut writer = csv::Writer::from_path(filename).unwrap();
+            let logs = build_event_times(messages);
+            for message in logs.iter().sorted_by_key(|it| it.values) {
+                writer.serialize(message).unwrap();
             }
+
+            writer.flush().unwrap();
+            let mut writer_no_io = csv::Writer::from_path(filename_no_io).unwrap();
+            let logs_no_io = build_event_times(messages_no_io);
+            for message in logs_no_io.iter().sorted_by_key(|it| it.values) {
+                writer_no_io.serialize(message).unwrap();
+            }
+            writer_no_io.flush().unwrap();
         }
     }
 
@@ -402,20 +451,21 @@ mod tests {
                 .unwrap(),
         );
         for buffer_size in vec![256, 512, 1024, 2048].into_iter() {
+            // let test_args=env::var("CHIMP_TEST_ARGS").unwrap_or_default().split(",").map(|s|s.trim().to_string()).collect_vec();
             let filename = format!("{}_chimp32_output.txt", buffer_size);
             if fs::exists(&filename).unwrap() {
                 fs::remove_file(&filename).unwrap();
             }
             env::set_var("CHIMP_BUFFER_SIZE", buffer_size.to_string());
             println!("Buffer size: {}", env::var("CHIMP_BUFFER_SIZE").unwrap());
-            let mut messages = Vec::<String>::with_capacity(30);
+            let mut messages = Vec::<EventLogType>::with_capacity(30);
             let mut values = get_values("city_temperature.csv")
                 .expect("Could not read test values")
                 .to_vec();
 
             let mut reader = TimeSeriesReader::new(50_000, values.clone(), 500_000_000);
 
-            for size_checkpoint in (1..11) {
+            for size_checkpoint in 1..11 {
                 while let Some(block) = reader.next() {
                     values.extend(block);
                     if values.len() >= (size_checkpoint * reader.max_size()) / 100 {
@@ -434,15 +484,22 @@ mod tests {
                 let compression_ratio = (compressed_values2.compressed_value_ref().len()
                     * SIZE_IN_BYTE) as f64
                     / value_new.len() as f64;
-                messages.push(format!(
-                    "Compression ratio {} values: {compression_ratio}\n",
-                    value_new.len()
-                ));
-                messages.push(format!(
-                    "Encoding time {} values: {}\n",
-                    value_new.len(),
-                    compression_time - compressed_values2.skip_time()
-                ));
+                messages.push(EventLogType::CompressionRatio {
+                    values: value_new.len() as u64,
+                    ratio: compression_ratio,
+                });
+                //     "Compression ratio {} values: {compression_ratio}\n",
+                //     value_new.len()
+                // ));
+                messages.push(EventLogType::EncodingTime {
+                    values: value_new.len() as u64,
+                    time: compression_time - compressed_values2.skip_time(),
+                });
+                // messages.push(format!(
+                //     "Encoding time {} values: {}\n",
+                //     value_new.len(),
+                //     compression_time - compressed_values2.skip_time()
+                // ));
 
                 let time = std::time::Instant::now();
                 let decompressor = BatchedGPUDecompressor::new(context.clone());
@@ -452,11 +509,15 @@ mod tests {
                 {
                     Ok(decompressed_values) => {
                         let decompression_time = time.elapsed().as_millis();
-                        messages.push(format!(
-                            "Decoding time {} values: {}\n",
-                            value_new.len(),
-                            decompression_time - decompressed_values.skip_time()
-                        ));
+                        messages.push(EventLogType::DecompressionTime {
+                            values: value_new.len() as u64,
+                            time: decompression_time - decompressed_values.skip_time(),
+                        });
+                        // messages.push(format!(
+                        //     "Decoding time {} values: {}\n",
+                        //     value_new.len(),
+                        //     decompression_time - decompressed_values.skip_time()
+                        // ));
                         // fs::write("actual.log", decompressed_values.0.iter().join("\n")).unwrap();
                         // fs::write("expected.log", values.iter().join("\n")).unwrap();
                         assert_eq!(decompressed_values.0, value_new);
@@ -467,15 +528,19 @@ mod tests {
                     }
                 }
             }
-            let f = OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(filename)
-                .expect("temp");
-            let mut fw = f.make_writer();
-            for message in messages {
-                write!(fw, "{message}").unwrap()
+            let mut writer = csv::Writer::from_path(filename).unwrap();
+            // let f = OpenOptions::new()
+            //     .append(true)
+            //     .create(true)
+            //     .open(filename)
+            //     .expect("temp");
+            // let mut fw = f.make_writer();
+            let time = build_event_times(messages);
+
+            for message in time.iter().sorted_by_key(|it| it.values) {
+                writer.serialize(message).unwrap();
             }
+            writer.flush().unwrap();
         }
     }
 

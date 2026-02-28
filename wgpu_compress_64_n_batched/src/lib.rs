@@ -13,11 +13,11 @@ mod tests {
     use crate::decompressor::GPUDecompressorBatchedN64;
     use compress_utils::context::Context;
     use compress_utils::cpu_compress::{Compressor, Decompressor};
+    use compress_utils::general_utils::EventLogType::DecompressionTime;
+    use compress_utils::general_utils::{build_event_times, EventLogType};
     use itertools::Itertools;
     use pollster::FutureExt;
     use std::cmp::min;
-    use std::fs::OpenOptions;
-    use std::io::Write;
     use std::sync::Arc;
     use std::{env, fs};
     use tracing_subscriber::fmt::MakeWriter;
@@ -58,7 +58,7 @@ mod tests {
                 if fs::exists(&filename).unwrap() {
                     fs::remove_file(&filename).unwrap();
                 }
-                let mut messages = Vec::<String>::with_capacity(30);
+                let mut messages = Vec::<EventLogType>::with_capacity(30);
                 let mut values = get_values(file_name)
                     .expect("Could not read test values")
                     .to_vec();
@@ -73,7 +73,7 @@ mod tests {
                     let mut value_new = values.to_vec();
                     println!("Starting compression of {} values", value_new.len());
                     let time = std::time::Instant::now();
-                    let compressor = ChimpN64GPUBatched::new(context.clone(), 32);
+                    let compressor = ChimpN64GPUBatched::new(context.clone(), n);
                     let mut compressed_values2 =
                         compressor.compress(&mut value_new).block_on().unwrap();
                     let compression_time = time.elapsed().as_millis();
@@ -82,32 +82,34 @@ mod tests {
                     let compression_ratio = (compressed_values2.compressed_value_ref().len()
                         * SIZE_IN_BYTE) as f64
                         / value_new.len() as f64;
-                    messages.push(format!(
-                        "Compression ratio {} values: {compression_ratio}\n",
-                        value_new.len()
-                    ));
+
+                    messages.push(EventLogType::CompressionRatio {
+                        values: value_new.len() as u64,
+                        ratio: compression_ratio,
+                    });
                     // println!("{}", messages.last().unwrap());
-                    messages.push(format!(
-                        "Encoding time {} values: {}\n",
-                        value_new.len(),
-                        compression_time - compressed_values2.skip_time()
-                    ));
+
+                    messages.push(EventLogType::EncodingTime {
+                        values: value_new.len() as u64,
+                        time: compression_time - compressed_values2.skip_time(),
+                    });
+
                     // println!("{}", compression_time - compressed_values2.skip_time());
                     // println!("{}", messages.last().unwrap());
 
                     let time = std::time::Instant::now();
-                    let decompressor = GPUDecompressorBatchedN64::new(context.clone(), 32);
+                    let decompressor = GPUDecompressorBatchedN64::new(context.clone(), n);
                     match decompressor
                         .decompress(compressed_values2.compressed_value_mut())
                         .block_on()
                     {
                         Ok(decompressed_values) => {
                             let decompression_time = time.elapsed().as_millis();
-                            messages.push(format!(
-                                "Decoding time {} values: {}\n",
-                                value_new.len(),
-                                decompression_time - decompressed_values.skip_time()
-                            ));
+
+                            messages.push(DecompressionTime {
+                                values: value_new.len() as u64,
+                                time: decompression_time - decompressed_values.skip_time(),
+                            });
                             // println!("{}", messages.last().unwrap());
                             // fs::write(
                             //     "actual.log",
@@ -118,7 +120,7 @@ mod tests {
                             // )
                             // .unwrap();
                             // fs::write("expected.log", value_new.iter().join("\n")).unwrap();
-                            // assert_eq!(decompressed_values.0, value_new);
+                            assert_eq!(decompressed_values.0, value_new);
                         }
                         Err(err) => {
                             eprintln!("Decompression error: {:?}", err);
@@ -126,14 +128,11 @@ mod tests {
                         }
                     }
                 }
-                let f = OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(filename)
-                    .expect("temp");
-                let mut fw = f.make_writer();
-                for message in messages {
-                    write!(fw, "{message}").unwrap()
+                let mut writer = csv::Writer::from_path(filename).unwrap();
+
+                let logs = build_event_times(messages);
+                for message in logs.iter().sorted_by_key(|it| it.values) {
+                    writer.serialize(message).unwrap();
                 }
             }
         }

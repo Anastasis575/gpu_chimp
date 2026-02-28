@@ -618,7 +618,7 @@ pub mod bit_utils {
 /// General Utility Functions
 pub mod general_utils {
     use log::warn;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     use serde::{Deserialize, Serialize};
     use std::fs;
@@ -1060,5 +1060,53 @@ pub mod general_utils {
             .create(true)
             .append(true)
             .open(file_name)?)
+    }
+
+    pub enum EventLogType {
+        CompressionRatio { values: u64, ratio: f64 },
+        EncodingTime { values: u64, time: u128 },
+        DecompressionTime { values: u64, time: u128 },
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+    pub struct EventTime {
+        pub values: u64,
+        pub ratio: f64,
+        pub encoding_time: u128,
+        pub decoding_time: u128,
+    }
+    impl EventLogType {
+        pub fn values(&self) -> &u64 {
+            match self {
+                EventLogType::CompressionRatio { values, .. } => values,
+                EventLogType::EncodingTime { values, .. } => values,
+                EventLogType::DecompressionTime { values, .. } => values,
+            }
+        }
+    }
+    impl EventTime {
+        pub fn validate(&self) {
+            assert!(self.values > 0);
+            assert!(self.encoding_time > 0);
+            assert!(self.decoding_time > 0);
+            assert!(self.ratio > 0.0);
+        }
+    }
+    pub fn build_event_times(iter: impl IntoIterator<Item = EventLogType>) -> Vec<EventTime> {
+        let mut it = iter.into_iter();
+        let mut out = HashMap::<u64, EventTime>::new();
+        for log in it {
+            let entry = out
+                .entry(*log.values())
+                .or_insert_with(|| EventTime::default());
+            entry.values = *log.values();
+            match log {
+                EventLogType::CompressionRatio { ratio, .. } => entry.ratio = ratio,
+                EventLogType::EncodingTime { time, .. } => entry.encoding_time = time,
+                EventLogType::DecompressionTime { time, .. } => entry.decoding_time = time,
+            }
+        }
+        out.iter().for_each(|(_, v)| v.validate());
+        out.values().cloned().collect()
     }
 }
