@@ -1,13 +1,16 @@
 [package]
-name = "api"
+name = "chimp-gpu"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 compress_utils = { path = "../compress_utils" }
-wgpu_compress_32 = { path = "../wgpu_compress_32" }
 wgpu_compress_32_batched = { path = "../wgpu_compress_32_batched" }
+wgpu_compress_32_n_batched = { path = "../wgpu_compress_32_n_batched" }
 wgpu_compress_64_batched = { path = "../wgpu_compress_64_batched" }
-log = { workspace = true }
-async-trait = { workspace = true }
-pollster = { workspace = true }
+wgpu_compress_64_n_batched = { path = "../wgpu_compress_64_n_batched" }
+wgpu = { workspace = true }
+wgpu-types = { workspace = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

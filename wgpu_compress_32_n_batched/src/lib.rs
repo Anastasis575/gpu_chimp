@@ -1,8 +1,8 @@
 mod calculate_indexes;
-mod chimpn;
+pub mod chimpn;
 mod compute_s_shader;
 mod cpu;
-mod decompressor;
+pub mod decompressor;
 mod final_compress;
 mod finalize;
 mod previous_indexes;

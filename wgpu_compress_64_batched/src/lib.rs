@@ -70,9 +70,6 @@ impl Compressor<f64> for ChimpCompressorBatched64 {
             let mut total_millis = 0;
             let mut values = iteration_values;
             let mut output_vec: CompressResult;
-            let mut s_values: Vec<S>;
-            let mut chimp_vec: Vec<ChimpOutput64>;
-            let mut indexes: Vec<u32>;
             let mut padding = Padding(0);
             let buffer_size = ChimpBufferInfo::get().buffer_size();
             let mut buffers = wgpu_utils::RunBuffers::default();
@@ -170,7 +167,7 @@ impl CalculateIndexes64 for CalculateIndexesImpls {
     ) -> Result<()> {
         match self {
             CalculateIndexesImpls::GPU(c) => c.calculate_indexes(buffers, size, skip_time).await,
-            CalculateIndexesImpls::CPU(c) => {
+            CalculateIndexesImpls::CPU(_) => {
                 // c.calculate_indexes(input, size).await?;
                 Ok(())
             }
@@ -201,7 +198,7 @@ impl FinalCompress for Compress64Impls {
     ) -> anyhow::Result<()> {
         match self {
             Compress64Impls::GPU(c) => c.final_compress(run_buffers, skip_time).await,
-            Compress64Impls::CPU(c) => {
+            Compress64Impls::CPU(_) => {
                 // c.final_compress(input, s_values, padding).await;
                 Ok(())
             }
@@ -223,7 +220,7 @@ impl Finalize for Finalizer64impls {
     ) -> anyhow::Result<CompressResult> {
         match self {
             Finalizer64impls::GPU(f) => f.finalize(run_buffers, padding, skip_time).await,
-            Finalizer64impls::CPU(f) => {
+            Finalizer64impls::CPU(_) => {
                 // f.finalize(chimp_output, padding, indexes).await?;
                 Ok(CompressResult(Vec::new(), 0, 0))
             }
@@ -284,7 +281,7 @@ impl ChimpCompressorBatched64 {
             ),
         }
     }
-    pub(crate) fn new(context: impl Into<Arc<Context>>) -> Self {
+    pub fn new(context: impl Into<Arc<Context>>) -> Self {
         Self {
             context: context.into(),
             device_type: DeviceEnum::GPU,

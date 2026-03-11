@@ -634,7 +634,7 @@ pub mod general_utils {
             &self.0
         }
 
-        pub fn compressed_value(self) -> Vec<u8> {
+        pub fn compressed_values(self) -> Vec<u8> {
             self.0
         }
         pub fn compressed_value_mut(&mut self) -> &mut Vec<u8> {
